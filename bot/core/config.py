@@ -1,11 +1,37 @@
 """Configuration management for the trading bot."""
 from __future__ import annotations
 
+import json
+from json import JSONDecodeError
 from functools import lru_cache
-from typing import List
+from typing import Any, List
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic.fields import FieldInfo
+from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
+from pydantic_settings.sources import DotEnvSettingsSource, ForceDecode, NoDecode
+
+
+def _json_loads(value: str) -> Any:
+    """Parse JSON values, returning the raw string if parsing fails."""
+
+    try:
+        return json.loads(value)
+    except JSONDecodeError:
+        return value
+
+
+class _SafeDotEnvSettingsSource(DotEnvSettingsSource):
+    """Dotenv settings source that tolerates non-JSON values."""
+
+    def decode_complex_value(self, field_name: str, field: FieldInfo, value: Any) -> Any:
+        if field and (
+            NoDecode in field.metadata
+            or (self.config.get("enable_decoding") is False and ForceDecode not in field.metadata)
+        ):
+            return value
+
+        return _json_loads(value)
 
 
 class Settings(BaseSettings):
@@ -28,7 +54,32 @@ class Settings(BaseSettings):
     telegram_chat_id: str | None = Field(default=None)
     prometheus_port: int = Field(9000, ge=1024, le=65535)
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        safe_dotenv = _SafeDotEnvSettingsSource(
+            settings_cls=settings_cls,
+            env_file=getattr(dotenv_settings, "env_file", None),
+            env_file_encoding=getattr(dotenv_settings, "env_file_encoding", None),
+            env_prefix=getattr(dotenv_settings, "env_prefix", None),
+            env_nested_delimiter=getattr(dotenv_settings, "env_nested_delimiter", None),
+            env_nested_max_split=getattr(dotenv_settings, "env_nested_max_split", None),
+            env_ignore_empty=getattr(dotenv_settings, "env_ignore_empty", None),
+            env_parse_none_str=getattr(dotenv_settings, "env_parse_none_str", None),
+            env_parse_enums=getattr(dotenv_settings, "env_parse_enums", None),
+        )
+        return init_settings, env_settings, safe_dotenv, file_secret_settings
 
     @field_validator("universe", "timeframes", mode="before")
     def split_csv(cls, value: str | List[str]) -> List[str]:  # type: ignore[override]
