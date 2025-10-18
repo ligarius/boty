@@ -5,7 +5,7 @@ from functools import lru_cache
 from typing import List
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -28,9 +28,7 @@ class Settings(BaseSettings):
     telegram_chat_id: str | None = Field(default=None, env="TELEGRAM_CHAT_ID")
     prometheus_port: int = Field(9000, ge=1024, le=65535)
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
     @field_validator("universe", "timeframes", mode="before")
     def split_csv(cls, value: str | List[str]) -> List[str]:  # type: ignore[override]
