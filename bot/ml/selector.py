@@ -55,6 +55,6 @@ class SignalSelector:
     def score_signals(self, signals: Iterable[Signal]) -> List[Signal]:
         selector = EnsembleSelector()
         if self.fitted:
-            selector.model = self.pipeline.named_steps["clf"]
+            selector.model = self.pipeline
             selector.is_trained = True
         return selector.score_signals(signals)
