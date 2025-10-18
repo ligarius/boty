@@ -51,6 +51,8 @@ bot/scripts/run_live.sh
 bot/scripts/report_daily.sh
 ```
 
+> Nota: Los scripts CLI aceptan `PYTHON_BIN=/ruta/a/python` para forzar un intérprete específico, con fallback automático a `python3` o `python` si no se define.
+
 ## Migraciones y base de datos
 El repositorio utiliza SQLAlchemy para gestionar tablas `signals` y `trades`. Al levantar el contenedor o instanciar `Repository`, las tablas se crean automáticamente.
 
