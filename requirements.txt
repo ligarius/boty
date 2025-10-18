@@ -14,4 +14,5 @@ psycopg2-binary
 prometheus_client
 jinja2
 pytest
+httpx
 pydantic-settings

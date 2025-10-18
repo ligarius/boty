@@ -9,6 +9,8 @@ const percentFormatter = new Intl.NumberFormat('es-ES', {
   maximumFractionDigits: 2,
 });
 
+const allowedModes = new Set(['backtest', 'paper', 'live']);
+
 function formatValue(value, fallback = '-') {
   if (value === null || value === undefined || Number.isNaN(value)) {
     return fallback;
@@ -56,6 +58,11 @@ function updateStatus(status) {
   setText('status-dd', status.daily_dd, (v) => `${formatValue(v)} USD`);
   setText('status-positions', status.positions);
   setText('status-mode', status.mode || '-');
+
+  const modeSelect = document.getElementById('mode-select');
+  if (modeSelect && typeof status.mode === 'string' && allowedModes.has(status.mode)) {
+    modeSelect.value = status.mode;
+  }
 }
 
 function updateTradeSummary(summary) {
@@ -170,4 +177,53 @@ async function refreshDashboard() {
 window.addEventListener('DOMContentLoaded', () => {
   refreshDashboard();
   setInterval(refreshDashboard, 5000);
+
+  const modeSelect = document.getElementById('mode-select');
+  const modeButton = document.getElementById('mode-apply');
+  const feedback = document.getElementById('mode-feedback');
+
+  const setFeedback = (message, isError = false) => {
+    if (!feedback) return;
+    feedback.textContent = message;
+    feedback.classList.toggle('mode-feedback-error', Boolean(isError));
+  };
+
+  if (modeButton && modeSelect) {
+    modeButton.addEventListener('click', async () => {
+      const mode = modeSelect.value;
+      setFeedback('');
+      try {
+        const response = await fetch('/mode', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode }),
+        });
+
+        if (response.status === 400 || response.status === 403) {
+          const errorData = await response.json().catch(() => ({ detail: 'Error actualizando modo' }));
+          setFeedback(errorData.detail || 'No se pudo actualizar el modo', true);
+          return;
+        }
+
+        if (!response.ok) {
+          throw new Error(`Error HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        if (data.mode) {
+          setText('status-mode', data.mode);
+          if (allowedModes.has(data.mode)) {
+            modeSelect.value = data.mode;
+          }
+          setFeedback(`Modo actualizado a ${data.mode}`);
+        } else {
+          setFeedback('Modo actualizado');
+        }
+        refreshDashboard();
+      } catch (error) {
+        console.error('Error cambiando modo operativo', error);
+        setFeedback('Error inesperado al cambiar el modo', true);
+      }
+    });
+  }
 });
