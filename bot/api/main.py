@@ -17,7 +17,7 @@ from ..backtest.engine import BacktestEngine
 from ..core.config import get_settings
 from ..core.risk import RiskManager
 from ..data.loader import OHLCVRequest, generate_synthetic_data
-from ..exec.celery_app import evaluate_strategies
+from ..exec.celery_app import evaluate_strategies, get_worker_state
 from ..obs.logging import configure_logging
 from ..obs.metrics import pnl_gauge, drawdown_gauge
 from ..persistence.repository import Repository
@@ -58,14 +58,25 @@ def health() -> Dict[str, str]:
 
 
 @app.get("/status")
-def status() -> Dict[str, float]:
-    equity = 10000.0
-    pnl = pnl_gauge._value.get()  # type: ignore[attr-defined]
-    drawdown = drawdown_gauge._value.get()  # type: ignore[attr-defined]
+def status() -> Dict[str, object]:
+    base_equity = 10000.0
+    repo = get_repository()
+
+    if repo is not None:
+        portfolio = repo.get_portfolio_metrics(base_equity)
+        equity = portfolio["equity"]
+        drawdown = portfolio["drawdown"]
+        positions = portfolio["open_positions"]
+    else:
+        pnl = pnl_gauge._value.get()  # type: ignore[attr-defined]
+        equity = base_equity + pnl
+        drawdown = drawdown_gauge._value.get()  # type: ignore[attr-defined]
+        positions = 0
+
     return {
-        "equity": equity + pnl,
+        "equity": equity,
         "daily_dd": drawdown,
-        "positions": 0,
+        "positions": positions,
         "mode": settings.mode,
     }
 
@@ -158,6 +169,7 @@ def dashboard_data() -> Dict[str, object]:
         daily_pnl = repo.get_daily_pnl(limit=30)
 
     status_payload = status()
+    worker_state = get_worker_state()
     try:
         report_payload = report_daily()
     except Exception as exc:  # pragma: no cover - defensive fallback
@@ -170,4 +182,8 @@ def dashboard_data() -> Dict[str, object]:
         "trade_summary": trade_summary,
         "recent_trades": recent_trades,
         "daily_pnl": daily_pnl,
+        "activity": {
+            "worker": worker_state,
+            "repository_ready": repo is not None,
+        },
     }

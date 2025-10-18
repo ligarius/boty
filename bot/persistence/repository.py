@@ -221,3 +221,37 @@ class Repository:
 
         ordered_days = sorted(buckets.values(), key=lambda item: item["day"], reverse=True)
         return ordered_days[:limit]
+
+    def get_portfolio_metrics(self, starting_equity: float) -> Dict[str, float]:
+        """Return high level portfolio metrics derived from stored trades."""
+
+        closed_stmt = (
+            select(trades_table.c.pnl)
+            .where(trades_table.c.pnl.is_not(None))
+            .order_by(trades_table.c.closed_at.asc())
+        )
+        open_stmt = select(func.count()).where(trades_table.c.closed_at.is_(None))
+
+        with self._connection() as conn:
+            closed_rows = conn.execute(closed_stmt).fetchall()
+            open_positions = conn.execute(open_stmt).scalar_one()
+
+        equity = float(starting_equity)
+        peak_equity = equity
+        max_drawdown = 0.0
+        for row in closed_rows:
+            if row.pnl is None:
+                continue
+            equity += float(row.pnl)
+            if equity > peak_equity:
+                peak_equity = equity
+            if peak_equity:
+                drawdown = (equity - peak_equity) / peak_equity
+                if drawdown < max_drawdown:
+                    max_drawdown = drawdown
+
+        return {
+            "equity": equity,
+            "drawdown": abs(max_drawdown),
+            "open_positions": int(open_positions or 0),
+        }
