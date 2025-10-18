@@ -14,6 +14,7 @@ class PositionSizingResult:
     symbol: str
     quantity: float
     notional: float
+    margin: float
     risk_amount: float
     atr: float
     leverage: float
@@ -59,17 +60,20 @@ class RiskManager:
             raise ValueError("ATR must be positive")
         risk_pct = self.settings.risk_pct * risk_multiplier
         risk_amount = equity * risk_pct
+        leverage = max(self.settings.leverage, 1e-6)
         stop_distance = atr * 1.5  # ATR multiple stop
         quantity = risk_amount / stop_distance
-        notional = quantity * entry_price / max(self.settings.leverage, 1e-6)
-        min_qty = self._min_contract_notional(entry_price)
-        if notional < min_qty:
-            quantity = min_qty * self.settings.leverage / entry_price
-            notional = min_qty
+        notional = quantity * entry_price
+        min_notional = self._min_contract_notional(entry_price)
+        if notional < min_notional:
+            quantity = min_notional / entry_price
+            notional = min_notional
+        margin = notional / leverage
         return PositionSizingResult(
             symbol=symbol,
             quantity=float(np.round(quantity, 6)),
             notional=float(np.round(notional, 2)),
+            margin=float(np.round(margin, 2)),
             risk_amount=float(np.round(risk_amount, 2)),
             atr=float(np.round(atr, 4)),
             leverage=self.settings.leverage,
