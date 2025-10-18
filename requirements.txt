@@ -1,0 +1,15 @@
+fastapi
+uvicorn
+pandas
+numpy
+vectorbt
+scikit-learn
+optuna
+joblib
+celery
+redis
+python-binance
+sqlalchemy
+psycopg2-binary
+prometheus_client
+pytest

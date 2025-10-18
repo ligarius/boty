@@ -1,0 +1,46 @@
+version: "3.9"
+services:
+  api:
+    build:
+      context: .
+      dockerfile: bot/infra/Dockerfile.api
+    ports:
+      - "8000:8000"
+    environment:
+      - MODE=backtest
+      - REDIS_URL=redis://redis:6379/0
+      - DB_URL=postgresql+psycopg2://bot:bot@postgres:5432/bot
+    depends_on:
+      - redis
+      - postgres
+  worker:
+    build:
+      context: .
+      dockerfile: bot/infra/Dockerfile.worker
+    environment:
+      - MODE=backtest
+      - REDIS_URL=redis://redis:6379/0
+      - DB_URL=postgresql+psycopg2://bot:bot@postgres:5432/bot
+    depends_on:
+      - redis
+      - postgres
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+  postgres:
+    image: postgres:14
+    environment:
+      POSTGRES_USER: bot
+      POSTGRES_PASSWORD: bot
+      POSTGRES_DB: bot
+    ports:
+      - "5432:5432"
+  prometheus:
+    image: prom/prometheus
+    volumes:
+      - ./bot/infra/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    depends_on:
+      - api
