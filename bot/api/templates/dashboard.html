@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Prompt Maestro – Trading Dashboard</title>
+    <link rel="stylesheet" href="/static/dashboard.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Prompt Maestro Trading Dashboard</h1>
+      <p class="subtitle">Monitoreo en tiempo real de balances, estrategias y rendimiento.</p>
+    </header>
+
+    <main>
+      <section class="grid">
+        <article class="card" id="status-card">
+          <h2>Estado en Vivo</h2>
+          <dl>
+            <div>
+              <dt>Equity estimada</dt>
+              <dd id="status-equity">-</dd>
+            </div>
+            <div>
+              <dt>Drawdown diario</dt>
+              <dd id="status-dd">-</dd>
+            </div>
+            <div>
+              <dt>Posiciones abiertas</dt>
+              <dd id="status-positions">-</dd>
+            </div>
+            <div>
+              <dt>Modo operativo</dt>
+              <dd id="status-mode">-</dd>
+            </div>
+          </dl>
+        </article>
+
+        <article class="card">
+          <h2>Resumen de Trades</h2>
+          <dl class="compact">
+            <div>
+              <dt>Trades cerrados</dt>
+              <dd id="summary-closed">-</dd>
+            </div>
+            <div>
+              <dt>Trades abiertos</dt>
+              <dd id="summary-open">-</dd>
+            </div>
+            <div>
+              <dt>Ganadores</dt>
+              <dd id="summary-wins">-</dd>
+            </div>
+            <div>
+              <dt>Perdedores</dt>
+              <dd id="summary-losses">-</dd>
+            </div>
+            <div>
+              <dt>Win rate</dt>
+              <dd id="summary-winrate">-</dd>
+            </div>
+            <div>
+              <dt>Loss rate</dt>
+              <dd id="summary-lossrate">-</dd>
+            </div>
+            <div>
+              <dt>Promedio ganancias</dt>
+              <dd id="summary-avgwin">-</dd>
+            </div>
+            <div>
+              <dt>Promedio pérdidas</dt>
+              <dd id="summary-avgloss">-</dd>
+            </div>
+            <div>
+              <dt>Mejor trade</dt>
+              <dd id="summary-best">-</dd>
+            </div>
+            <div>
+              <dt>Peor trade</dt>
+              <dd id="summary-worst">-</dd>
+            </div>
+            <div>
+              <dt>PNL total</dt>
+              <dd id="summary-totalpnl">-</dd>
+            </div>
+          </dl>
+        </article>
+
+        <article class="card">
+          <h2>Reporte Diario Sintético</h2>
+          <dl class="compact">
+            <div>
+              <dt>ROI</dt>
+              <dd id="report-roi">-</dd>
+            </div>
+            <div>
+              <dt>Sharpe</dt>
+              <dd id="report-sharpe">-</dd>
+            </div>
+            <div>
+              <dt>Profit Factor</dt>
+              <dd id="report-pf">-</dd>
+            </div>
+          </dl>
+          <button id="download-report" type="button">Descargar CSV</button>
+        </article>
+      </section>
+
+      <section class="card full-width">
+        <div class="card-header">
+          <h2>Histórico de Trades</h2>
+          <span class="muted">Ordenado por fecha de cierre más reciente.</span>
+        </div>
+        <div class="table-wrapper">
+          <table id="trades-table">
+            <thead>
+              <tr>
+                <th>Symbol</th>
+                <th>Entry</th>
+                <th>Exit</th>
+                <th>Qty</th>
+                <th>PNL</th>
+                <th>Abierto</th>
+                <th>Cerrado</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card full-width">
+        <div class="card-header">
+          <h2>PNL Diario</h2>
+          <span class="muted">Últimos 30 días de operaciones cerradas.</span>
+        </div>
+        <div class="table-wrapper">
+          <table id="pnl-table">
+            <thead>
+              <tr>
+                <th>Día</th>
+                <th>PNL</th>
+                <th>Trades</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <small>
+        Datos actualizados cada 5 segundos. Para métricas completas, conecte Prometheus/Grafana o consulte la base de datos.
+      </small>
+    </footer>
+
+    <script src="/static/dashboard.js" defer></script>
+  </body>
+</html>
