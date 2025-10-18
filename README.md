@@ -29,29 +29,80 @@ TELEGRAM_CHAT_ID=
 
 ## Ejecución con Docker
 
+Levantar toda la plataforma (API, worker Celery, Redis, Postgres y Prometheus):
+
 ```bash
 docker compose up -d
 ```
 
-Endpoints disponibles:
-- `GET /docs`
-- `GET /status`
-- `GET /report/daily`
-
-## Scripts CLI
+Comandos útiles para operar los contenedores:
 
 ```bash
-# Backtest
-bot/scripts/run_backtest.sh BTCUSDT 1m 2023-01-01 2023-02-01
-# Paper trading (worker Celery)
-bot/scripts/run_paper.sh
-# Validación antes de live
-bot/scripts/run_live.sh
-# Reporte diario
-bot/scripts/report_daily.sh
+# Ver estado general
+docker compose ps
+
+# Seguir logs del API FastAPI
+docker compose logs -f api
+
+# Seguir logs del worker de señales
+docker compose logs -f worker
+
+# Reiniciar componentes individuales
+docker compose restart api
+docker compose restart worker
+```
+
+Una vez levantados, la API queda disponible en `http://localhost:8000` y Prometheus en `http://localhost:9090`.
+
+### Ejecución local (sin Docker)
+
+Si prefieres correrlo en tu máquina sin contenedores:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+# Variables de entorno desde .env
+export $(grep -v '^#' .env | xargs)
+
+# API FastAPI
+uvicorn bot.api.main:app --host 0.0.0.0 --port 8000
+
+# Worker Celery en otra terminal
+celery -A bot.exec.celery_app.celery_app worker --loglevel=info
 ```
 
 > Nota: Los scripts CLI aceptan `PYTHON_BIN=/ruta/a/python` para forzar un intérprete específico, con fallback automático a `python3` o `python` si no se define.
+
+## Monitoreo y operación
+
+- **Documentación interactiva:** abrir `http://localhost:8000/docs`
+- **Salud básica:** `curl http://localhost:8000/health`
+- **Estado de equity y drawdown:** `curl http://localhost:8000/status`
+- **Reporte diario en CSV:** `curl http://localhost:8000/report/daily`
+- **Cambio de modo:** `curl -X POST http://localhost:8000/mode -H 'Content-Type: application/json' -d '{"mode": "paper"}'`
+- **Pausar/Reanudar señales:** `curl -X POST http://localhost:8000/pause` / `curl -X POST http://localhost:8000/resume`
+- **Actualizar universo:** `curl -X POST http://localhost:8000/universe -H 'Content-Type: application/json' -d '{"symbols": "BTCUSDT,ETHUSDT"}'`
+- **Ajustar riesgo:** `curl -X POST http://localhost:8000/risk -H 'Content-Type: application/json' -d '{"risk_pct": 0.02}'`
+- **Métricas Prometheus:** `curl http://localhost:8000/metrics`
+- **Dashboards Prometheus:** abrir `http://localhost:9090` y crear queries sobre los exportadores disponibles.
+
+Para ejecutar chequeos manuales o tareas recurrentes:
+
+```bash
+# Backtest con rango de fechas
+bot/scripts/run_backtest.sh BTCUSDT 1m 2023-01-01 2023-02-01
+
+# Worker en modo paper trading (Celery)
+bot/scripts/run_paper.sh
+
+# Validación previa a live
+bot/scripts/run_live.sh
+
+# Generar reporte diario
+bot/scripts/report_daily.sh
+```
 
 ## Migraciones y base de datos
 El repositorio utiliza SQLAlchemy para gestionar tablas `signals` y `trades`. Al levantar el contenedor o instanciar `Repository`, las tablas se crean automáticamente.
