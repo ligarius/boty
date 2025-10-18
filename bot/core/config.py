@@ -4,13 +4,14 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import List
 
-from pydantic import BaseSettings, Field, validator
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
     """Application configuration loaded from environment variables."""
 
-    mode: str = Field("backtest", regex="^(backtest|paper|live)$")
+    mode: str = Field("backtest", pattern="^(backtest|paper|live)$")
     binance_api_key: str | None = Field(default=None, env="BINANCE_API_KEY")
     binance_api_secret: str | None = Field(default=None, env="BINANCE_API_SECRET")
     binance_base_url: str = Field("https://fapi.binance.com", env="BINANCE_BASE_URL")
@@ -31,7 +32,7 @@ class Settings(BaseSettings):
         env_file = ".env"
         env_file_encoding = "utf-8"
 
-    @validator("universe", "timeframes", pre=True)
+    @field_validator("universe", "timeframes", mode="before")
     def split_csv(cls, value: str | List[str]) -> List[str]:  # type: ignore[override]
         if isinstance(value, str):
             return [token.strip() for token in value.split(",") if token.strip()]
