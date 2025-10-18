@@ -34,6 +34,18 @@
               <dd id="status-mode">-</dd>
             </div>
           </dl>
+          <div class="mode-control">
+            <label for="mode-select">Cambiar modo:</label>
+            <div class="mode-inputs">
+              <select id="mode-select" aria-label="Seleccionar modo operativo">
+                <option value="backtest">Backtest</option>
+                <option value="paper">Paper</option>
+                <option value="live">Live</option>
+              </select>
+              <button id="mode-apply" type="button">Confirmar</button>
+            </div>
+            <p id="mode-feedback" class="mode-feedback" role="status" aria-live="polite"></p>
+          </div>
         </article>
 
         <article class="card">
