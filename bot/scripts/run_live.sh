@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
-PYTHON_BIN="${PYTHON_BIN:-$(command -v python3 || command -v python)}"
-# Allow overriding the interpreter while falling back to python when python3 is unavailable.
-"$PYTHON_BIN" -m bot.scripts.guard_live
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=bot/scripts/_runner.sh
+source "$SCRIPT_DIR/_runner.sh"
+
+run_python_module bot.scripts.guard_live

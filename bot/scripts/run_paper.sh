@@ -1,3 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
-celery -A bot.exec.celery_app.celery_app worker --loglevel=info
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=bot/scripts/_runner.sh
+source "$SCRIPT_DIR/_runner.sh"
+
+run_celery_worker -A bot.exec.celery_app.celery_app worker --loglevel=info
