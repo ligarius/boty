@@ -48,6 +48,89 @@
           </div>
         </article>
 
+        <article class="card" id="backtest-card">
+          <h2>Backtest Rápido</h2>
+          <form id="backtest-form" class="stacked-form">
+            <label>
+              Símbolo
+              <input type="text" id="backtest-symbol" name="symbol" value="BTCUSDT" required />
+            </label>
+            <label>
+              Timeframe
+              <input type="text" id="backtest-timeframe" name="timeframe" value="1m" required />
+            </label>
+            <label>
+              Inicio (ISO8601)
+              <input type="text" id="backtest-start" name="start" placeholder="2024-01-01T00:00:00" required />
+            </label>
+            <label>
+              Fin (ISO8601)
+              <input type="text" id="backtest-end" name="end" placeholder="2024-01-07T00:00:00" required />
+            </label>
+            <button type="submit" id="backtest-run">Ejecutar backtest</button>
+          </form>
+          <p id="backtest-feedback" class="feedback" role="status" aria-live="polite"></p>
+          <dl class="compact" aria-live="polite">
+            <div>
+              <dt>ROI</dt>
+              <dd id="backtest-roi">-</dd>
+            </div>
+            <div>
+              <dt>Sharpe</dt>
+              <dd id="backtest-sharpe">-</dd>
+            </div>
+            <div>
+              <dt>Profit Factor</dt>
+              <dd id="backtest-pf">-</dd>
+            </div>
+            <div>
+              <dt>Win Rate</dt>
+              <dd id="backtest-winrate">-</dd>
+            </div>
+            <div>
+              <dt>Max Drawdown</dt>
+              <dd id="backtest-dd">-</dd>
+            </div>
+            <div>
+              <dt>¿Listo para live?</dt>
+              <dd id="backtest-ready">-</dd>
+            </div>
+          </dl>
+        </article>
+
+        <article class="card" id="guard-card">
+          <h2>Guardia Live</h2>
+          <p>Valida si las métricas recientes cumplen los umbrales para operar en vivo.</p>
+          <button type="button" id="guard-run">Evaluar métricas</button>
+          <p id="guard-feedback" class="feedback" role="status" aria-live="polite"></p>
+          <dl class="compact" aria-live="polite">
+            <div>
+              <dt>ROI</dt>
+              <dd id="guard-roi">-</dd>
+            </div>
+            <div>
+              <dt>Sharpe</dt>
+              <dd id="guard-sharpe">-</dd>
+            </div>
+            <div>
+              <dt>Profit Factor</dt>
+              <dd id="guard-pf">-</dd>
+            </div>
+            <div>
+              <dt>Win Rate</dt>
+              <dd id="guard-winrate">-</dd>
+            </div>
+            <div>
+              <dt>Max Drawdown</dt>
+              <dd id="guard-dd">-</dd>
+            </div>
+            <div>
+              <dt>¿Apto para live?</dt>
+              <dd id="guard-ready">-</dd>
+            </div>
+          </dl>
+        </article>
+
         <article class="card">
           <h2>Resumen de Trades</h2>
           <dl class="compact">
@@ -98,9 +181,14 @@
           </dl>
         </article>
 
-        <article class="card">
+        <article class="card" id="report-card">
           <h2>Reporte Diario Sintético</h2>
-          <dl class="compact">
+          <div class="report-actions">
+            <button id="report-refresh" type="button">Actualizar reporte</button>
+            <button id="download-report" type="button">Descargar CSV</button>
+          </div>
+          <p id="report-feedback" class="feedback" role="status" aria-live="polite"></p>
+          <dl class="compact" aria-live="polite">
             <div>
               <dt>ROI</dt>
               <dd id="report-roi">-</dd>
@@ -113,8 +201,15 @@
               <dt>Profit Factor</dt>
               <dd id="report-pf">-</dd>
             </div>
+            <div>
+              <dt>Win Rate</dt>
+              <dd id="report-winrate">-</dd>
+            </div>
+            <div>
+              <dt>Max Drawdown</dt>
+              <dd id="report-dd">-</dd>
+            </div>
           </dl>
-          <button id="download-report" type="button">Descargar CSV</button>
         </article>
       </section>
 

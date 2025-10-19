@@ -24,6 +24,17 @@ class BacktestMetrics:
     profit_factor: float
     win_rate: float
 
+    def to_dict(self) -> Dict[str, float]:
+        """Serialize metrics as a plain dictionary."""
+
+        return {
+            "roi": float(self.roi),
+            "sharpe": float(self.sharpe),
+            "max_drawdown": float(self.max_drawdown),
+            "profit_factor": float(self.profit_factor),
+            "win_rate": float(self.win_rate),
+        }
+
 
 class BacktestEngine:
     """Run walk-forward backtests and compute metrics."""

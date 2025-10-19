@@ -6,21 +6,21 @@ from logging import getLogger
 from pathlib import Path
 from typing import Dict, Optional
 
-import pandas as pd
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
-from ..backtest.engine import BacktestEngine
 from ..core.config import get_settings
 from ..core.risk import RiskManager
-from ..data.loader import OHLCVRequest, generate_synthetic_data
 from ..exec.celery_app import evaluate_strategies, get_worker_state
 from ..obs.logging import configure_logging
 from ..obs.metrics import pnl_gauge, drawdown_gauge
 from ..persistence.repository import Repository
+from ..scripts.guard_live import evaluate_guard
+from ..scripts.report_daily_cli import generate_daily_report
+from ..scripts.run_backtest_cli import run_backtest
 
 configure_logging()
 app = FastAPI(title="PulseForge", version="1.0")
@@ -104,26 +104,35 @@ def resume_trading() -> Dict[str, str]:
     return {"status": "resumed"}
 
 
+@app.post("/backtest")
+def run_backtest_endpoint(payload: Dict[str, str]) -> Dict[str, object]:
+    symbol = payload.get("symbol")
+    timeframe = payload.get("timeframe")
+    start = payload.get("start")
+    end = payload.get("end")
+
+    if not symbol or not timeframe or not start or not end:
+        raise HTTPException(status_code=400, detail="symbol, timeframe, start and end are required")
+
+    try:
+        result = run_backtest(symbol, timeframe, start, end)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return result
+
+
+@app.post("/live/guard")
+def guard_live_endpoint() -> Dict[str, object]:
+    try:
+        return evaluate_guard()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.get("/report/daily")
-def report_daily() -> Dict[str, str]:
-    end = datetime.utcnow()
-    start = end - timedelta(days=1)
-    data = generate_synthetic_data(OHLCVRequest("BTCUSDT", "1m", start, end))
-    engine = BacktestEngine()
-    metrics = engine.run(data)
-    df = pd.DataFrame(
-        {
-            "timestamp": data.index,
-            "close": data["close"],
-        }
-    )
-    chart = df.to_csv(index=False)
-    return {
-        "roi": f"{metrics.roi:.2%}",
-        "sharpe": f"{metrics.sharpe:.2f}",
-        "profit_factor": f"{metrics.profit_factor:.2f}",
-        "chart_csv": chart,
-    }
+def report_daily_endpoint() -> Dict[str, object]:
+    return generate_daily_report()
 
 
 @app.post("/universe")
@@ -171,7 +180,7 @@ def dashboard_data() -> Dict[str, object]:
     status_payload = status()
     worker_state = get_worker_state()
     try:
-        report_payload = report_daily()
+        report_payload = report_daily_endpoint()
     except Exception as exc:  # pragma: no cover - defensive fallback
         logger.warning("Unable to compute synthetic daily report: %s", exc)
         report_payload = None
