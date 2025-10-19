@@ -66,7 +66,7 @@ def _to_pandas_freq(timeframe: str) -> str:
     unit = timeframe[-1]
     value = timeframe[:-1]
     if unit == "m":
-        return f"{value}T"
+        return f"{value}min"
     if unit == "h":
         return f"{value}H"
     raise ValueError(f"Unsupported timeframe {timeframe}")
