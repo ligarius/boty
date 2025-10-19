@@ -17,7 +17,10 @@ def momentum_signals(data: DataFrame, fast: int = 9, slow: int = 21, adx_period:
     df["signal"] = df.apply(lambda row: row["trend"] if row["adx"] > 20 else 0, axis=1)
     df["score"] = df["signal"] * (1 / (df["atr"].replace(0, pd.NA)))
     df["score"] = df["score"].fillna(0.0)
-    return df[["signal", "score", "atr", "adx"]].dropna()
+
+    result = df[["signal", "score", "atr", "adx"]].reindex(data.index)
+    result["signal"] = result["signal"].reindex(data.index, fill_value=0)
+    return result
 
 
 def _atr(df: DataFrame, period: int = 14) -> pd.Series:

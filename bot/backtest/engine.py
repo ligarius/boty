@@ -33,11 +33,11 @@ class BacktestEngine:
         self.risk = RiskManager(self.settings)
 
     def run(self, data: pd.DataFrame) -> BacktestMetrics:
-        signals_momentum = momentum.momentum_signals(data)["signal"]
-        signals_mean = mean_reversion.mean_reversion_signals(data)["signal"]
+        signals_momentum = momentum.momentum_signals(data)["signal"].reindex(data.index, fill_value=0)
+        signals_mean = mean_reversion.mean_reversion_signals(data)["signal"].reindex(data.index, fill_value=0)
         combined = (signals_momentum + signals_mean).clip(-1, 1)
-        entries = combined == 1
-        exits = combined == -1
+        entries = (combined == 1).reindex(data.index, fill_value=False)
+        exits = (combined == -1).reindex(data.index, fill_value=False)
         if vbt is not None:
             pf = vbt.Portfolio.from_signals(
                 data["close"],
