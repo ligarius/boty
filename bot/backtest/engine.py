@@ -44,18 +44,28 @@ class BacktestEngine:
         self.risk = RiskManager(self.settings)
 
     def run(self, data: pd.DataFrame) -> BacktestMetrics:
-        signals_momentum = (
-            momentum.momentum_signals(data)["signal"].reindex(data.index).fillna(0).astype(int)
-        )
-        signals_mean = (
-            mean_reversion.mean_reversion_signals(data)["signal"].reindex(data.index).fillna(0).astype(int)
-        )
-        combined = (signals_momentum + signals_mean).clip(-1, 1).fillna(0).astype(int)
-        entries = (combined == 1).reindex(data.index).fillna(False).astype(bool)
-        exits = (combined == -1).reindex(data.index).fillna(False).astype(bool)
+        momentum_df = momentum.momentum_signals(data).reindex(data.index)
+        mean_df = mean_reversion.mean_reversion_signals(data).reindex(data.index)
+
+        signals_momentum = momentum_df["signal"].fillna(0).astype(int)
+        signals_mean = mean_df["signal"].fillna(0).astype(int)
+
+        combined = (signals_momentum + signals_mean).clip(-1, 1).astype(int)
+        entries = (combined == 1).astype(bool)
+        exits = (combined == -1).astype(bool)
+
+        momentum_ready = momentum_df.drop(columns=["signal", "score"], errors="ignore").notna().all(axis=1)
+        mean_ready = mean_df.drop(columns=["signal", "score"], errors="ignore").notna().all(axis=1)
+        valid_mask = (momentum_ready & mean_ready).reindex(data.index, fill_value=False)
+        if not valid_mask.any():
+            valid_mask = pd.Series(True, index=data.index)
+
+        price = data.loc[valid_mask, "close"]
+        entries = entries.loc[valid_mask]
+        exits = exits.loc[valid_mask]
         if vbt is not None:
             pf = vbt.Portfolio.from_signals(
-                data["close"],
+                price,
                 entries=entries,
                 exits=exits,
                 fees=0.0004,
@@ -71,7 +81,8 @@ class BacktestEngine:
                 win_rate=float(stats.loc["Win Rate [%]"] / 100),
             )
         # Simple fallback using numpy for deterministic metrics
-        returns = data["close"].pct_change().fillna(0)
+        trimmed_data = data.loc[valid_mask]
+        returns = trimmed_data["close"].pct_change().fillna(0)
         cumulative = (1 + returns).cumprod()
         roi = cumulative.iloc[-1] - 1
         sharpe = returns.mean() / (returns.std() + 1e-8) * np.sqrt(252 * 24 * 60)

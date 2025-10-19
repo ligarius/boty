@@ -1,6 +1,7 @@
 """Momentum strategy using moving average crossover with ADX/ATR filters."""
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 from pandas import DataFrame
 
@@ -14,12 +15,13 @@ def momentum_signals(data: DataFrame, fast: int = 9, slow: int = 21, adx_period:
     df["atr"] = _atr(df, period=14)
     df["adx"] = _adx(df, period=adx_period)
     df["trend"] = (df["ma_fast"] > df["ma_slow"]).astype(int) - (df["ma_fast"] < df["ma_slow"]).astype(int)
-    df["signal"] = df.apply(lambda row: row["trend"] if row["adx"] > 20 else 0, axis=1)
+    df["signal"] = np.where(df["adx"] > 20, df["trend"], 0)
+    df["signal"] = pd.Series(df["signal"], index=df.index).fillna(0).astype(int)
     df["score"] = df["signal"] * (1 / (df["atr"].replace(0, pd.NA)))
     df["score"] = df["score"].fillna(0.0)
 
     result = df[["signal", "score", "atr", "adx"]].reindex(data.index)
-    result["signal"] = result["signal"].reindex(data.index).fillna(0).astype(int)
+    result["signal"] = result["signal"].fillna(0).astype(int)
     return result
 
 

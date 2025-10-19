@@ -19,11 +19,12 @@ def mean_reversion_signals(data: DataFrame, window: int = 20, z_threshold: float
     df.loc[df["zscore"] < -z_threshold, "signal"] = 1
     df.loc[df["rsi"] > 70, "signal"] = -1
     df.loc[df["rsi"] < 30, "signal"] = 1
+    df["signal"] = df["signal"].fillna(0).astype(int)
     df["score"] = df["signal"] * (1 / (df["atr"].replace(0, pd.NA)))
     df["score"] = df["score"].fillna(0.0)
 
     result = df[["signal", "score", "atr", "rsi", "zscore"]].reindex(data.index)
-    result["signal"] = result["signal"].reindex(data.index).fillna(0).astype(int)
+    result["signal"] = result["signal"].fillna(0).astype(int)
     return result
 
 
