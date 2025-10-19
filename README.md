@@ -73,7 +73,7 @@ uvicorn bot.api.main:app --host 0.0.0.0 --port 8000
 celery -A bot.exec.celery_app.celery_app worker --loglevel=info
 ```
 
-> Nota: Los scripts CLI aceptan `PYTHON_BIN=/ruta/a/python` para forzar un intérprete específico. Si las dependencias no están instaladas localmente, intentarán ejecutarse automáticamente dentro de los contenedores (`docker compose exec api/worker`).
+> Nota: Los scripts CLI aceptan `PYTHON_BIN=/ruta/a/python` para forzar un intérprete específico. Si las dependencias no están instaladas localmente, intentarán ejecutarse automáticamente dentro de los contenedores (`docker compose exec api/worker`). Tanto `run_python_module` como `run_celery_worker` detectan `ImportError`/`ModuleNotFoundError` (o exit codes 127) y rehúsan automáticamente hacia los contenedores correspondientes.
 
 ## Monitoreo y operación
 
