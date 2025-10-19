@@ -16,7 +16,7 @@ def momentum_signals(data: DataFrame, fast: int = 9, slow: int = 21, adx_period:
     df["trend"] = (df["ma_fast"] > df["ma_slow"]).astype(int) - (df["ma_fast"] < df["ma_slow"]).astype(int)
     df["signal"] = df.apply(lambda row: row["trend"] if row["adx"] > 20 else 0, axis=1)
     df["score"] = df["signal"] * (1 / (df["atr"].replace(0, pd.NA)))
-    df["score"].fillna(0.0, inplace=True)
+    df["score"] = df["score"].fillna(0.0)
     return df[["signal", "score", "atr", "adx"]].dropna()
 
 

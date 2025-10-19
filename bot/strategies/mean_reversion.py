@@ -20,7 +20,7 @@ def mean_reversion_signals(data: DataFrame, window: int = 20, z_threshold: float
     df.loc[df["rsi"] > 70, "signal"] = -1
     df.loc[df["rsi"] < 30, "signal"] = 1
     df["score"] = df["signal"] * (1 / (df["atr"].replace(0, pd.NA)))
-    df["score"].fillna(0.0, inplace=True)
+    df["score"] = df["score"].fillna(0.0)
     return df[["signal", "score", "atr", "rsi", "zscore"]].dropna()
 
 
