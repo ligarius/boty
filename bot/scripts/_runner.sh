@@ -75,20 +75,23 @@ run_celery_worker() {
   local worker_args=("$@")
 
   if command -v celery >/dev/null 2>&1; then
-    local tmp_err
+    local tmp_err tmp_out
     tmp_err=$(mktemp)
+    tmp_out=$(mktemp)
     set +e
-    celery "${worker_args[@]}" 2> >(tee "$tmp_err" >&2)
+    celery "${worker_args[@]}" \
+      > >(tee "$tmp_out") \
+      2> >(tee "$tmp_err" >&2)
     local status=$?
     set -e
 
     if [[ $status -eq 0 ]]; then
-      rm -f "$tmp_err"
+      rm -f "$tmp_err" "$tmp_out"
       return 0
     fi
 
-    if [[ $status -eq 127 ]] || grep -Eq "ModuleNotFoundError|ImportError" "$tmp_err"; then
-      rm -f "$tmp_err"
+    if [[ $status -eq 127 ]] || grep -Eq "ModuleNotFoundError|ImportError" "$tmp_err" || grep -Eq "ModuleNotFoundError|ImportError" "$tmp_out"; then
+      rm -f "$tmp_err" "$tmp_out"
       if get_compose_command; then
         "${DOCKER_COMPOSE[@]}" exec worker celery "${worker_args[@]}"
         return $?
@@ -98,7 +101,7 @@ run_celery_worker() {
       return $status
     fi
 
-    rm -f "$tmp_err"
+    rm -f "$tmp_err" "$tmp_out"
     return $status
   fi
 
