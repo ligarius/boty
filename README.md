@@ -73,7 +73,7 @@ uvicorn bot.api.main:app --host 0.0.0.0 --port 8000
 celery -A bot.exec.celery_app.celery_app worker --loglevel=info
 ```
 
-> Nota: Los scripts CLI aceptan `PYTHON_BIN=/ruta/a/python` para forzar un intérprete específico, con fallback automático a `python3` o `python` si no se define.
+> Nota: Los scripts CLI aceptan `PYTHON_BIN=/ruta/a/python` para forzar un intérprete específico. Si las dependencias no están instaladas localmente, intentarán ejecutarse automáticamente dentro de los contenedores (`docker compose exec api/worker`).
 
 ## Monitoreo y operación
 
