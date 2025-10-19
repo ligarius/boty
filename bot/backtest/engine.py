@@ -44,11 +44,15 @@ class BacktestEngine:
         self.risk = RiskManager(self.settings)
 
     def run(self, data: pd.DataFrame) -> BacktestMetrics:
-        signals_momentum = momentum.momentum_signals(data)["signal"].reindex(data.index, fill_value=0)
-        signals_mean = mean_reversion.mean_reversion_signals(data)["signal"].reindex(data.index, fill_value=0)
-        combined = (signals_momentum + signals_mean).clip(-1, 1)
-        entries = (combined == 1).reindex(data.index, fill_value=False)
-        exits = (combined == -1).reindex(data.index, fill_value=False)
+        signals_momentum = (
+            momentum.momentum_signals(data)["signal"].reindex(data.index).fillna(0).astype(int)
+        )
+        signals_mean = (
+            mean_reversion.mean_reversion_signals(data)["signal"].reindex(data.index).fillna(0).astype(int)
+        )
+        combined = (signals_momentum + signals_mean).clip(-1, 1).fillna(0).astype(int)
+        entries = (combined == 1).reindex(data.index).fillna(False).astype(bool)
+        exits = (combined == -1).reindex(data.index).fillna(False).astype(bool)
         if vbt is not None:
             pf = vbt.Portfolio.from_signals(
                 data["close"],

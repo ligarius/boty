@@ -23,7 +23,7 @@ def mean_reversion_signals(data: DataFrame, window: int = 20, z_threshold: float
     df["score"] = df["score"].fillna(0.0)
 
     result = df[["signal", "score", "atr", "rsi", "zscore"]].reindex(data.index)
-    result["signal"] = result["signal"].reindex(data.index, fill_value=0)
+    result["signal"] = result["signal"].reindex(data.index).fillna(0).astype(int)
     return result
 
 

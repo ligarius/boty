@@ -19,7 +19,7 @@ def momentum_signals(data: DataFrame, fast: int = 9, slow: int = 21, adx_period:
     df["score"] = df["score"].fillna(0.0)
 
     result = df[["signal", "score", "atr", "adx"]].reindex(data.index)
-    result["signal"] = result["signal"].reindex(data.index, fill_value=0)
+    result["signal"] = result["signal"].reindex(data.index).fillna(0).astype(int)
     return result
 
 
