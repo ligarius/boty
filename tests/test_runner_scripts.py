@@ -2,20 +2,14 @@ import os
 import subprocess
 
 
-def test_run_celery_worker_falls_back_to_docker(tmp_path):
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-
-    log_file = tmp_path / "docker_exec.log"
-
+def _write_fake_celery(bin_dir, script_body: str):
+    bin_dir.mkdir(exist_ok=True)
     celery_script = bin_dir / "celery"
-    celery_script.write_text(
-        "#!/usr/bin/env bash\n"
-        "echo \"ModuleNotFoundError: No module named 'foo'\" >&2\n"
-        "exit 1\n"
-    )
+    celery_script.write_text("#!/usr/bin/env bash\n" + script_body)
     celery_script.chmod(0o755)
 
+
+def _write_fake_docker(bin_dir):
     docker_script = bin_dir / "docker"
     docker_script.write_text(
         "#!/usr/bin/env bash\n"
@@ -35,6 +29,14 @@ def test_run_celery_worker_falls_back_to_docker(tmp_path):
     )
     docker_script.chmod(0o755)
 
+
+def _run_celery_helper(tmp_path):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+
+    log_file = tmp_path / "docker_exec.log"
+    _write_fake_docker(bin_dir)
+
     env = os.environ.copy()
     env["PATH"] = f"{bin_dir}:{env['PATH']}"
     env["RUNNER_LOG_FILE"] = str(log_file)
@@ -53,3 +55,21 @@ def test_run_celery_worker_falls_back_to_docker(tmp_path):
     assert log_file.exists(), completed.stderr
     content = log_file.read_text()
     assert "exec worker celery -A app worker" in content
+
+
+def test_run_celery_worker_falls_back_to_docker(tmp_path):
+    _write_fake_celery(
+        tmp_path / "bin",
+        "echo \"ModuleNotFoundError: No module named 'foo'\" >&2\n"
+        "exit 1\n",
+    )
+    _run_celery_helper(tmp_path)
+
+
+def test_run_celery_worker_detects_stdout_module_error(tmp_path):
+    _write_fake_celery(
+        tmp_path / "bin",
+        "echo \"ModuleNotFoundError: No module named 'foo'\"\n"
+        "exit 1\n",
+    )
+    _run_celery_helper(tmp_path)
