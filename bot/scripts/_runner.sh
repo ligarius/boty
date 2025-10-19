@@ -75,8 +75,31 @@ run_celery_worker() {
   local worker_args=("$@")
 
   if command -v celery >/dev/null 2>&1; then
-    celery "${worker_args[@]}"
-    return $?
+    local tmp_err
+    tmp_err=$(mktemp)
+    set +e
+    celery "${worker_args[@]}" 2> >(tee "$tmp_err" >&2)
+    local status=$?
+    set -e
+
+    if [[ $status -eq 0 ]]; then
+      rm -f "$tmp_err"
+      return 0
+    fi
+
+    if [[ $status -eq 127 ]] || grep -Eq "ModuleNotFoundError|ImportError" "$tmp_err"; then
+      rm -f "$tmp_err"
+      if get_compose_command; then
+        "${DOCKER_COMPOSE[@]}" exec worker celery "${worker_args[@]}"
+        return $?
+      fi
+
+      echo "Celery executable reported missing dependencies and Docker Compose is unavailable. Install requirements.txt or run inside the worker container." >&2
+      return $status
+    fi
+
+    rm -f "$tmp_err"
+    return $status
   fi
 
   if get_compose_command; then
