@@ -1,6 +1,6 @@
-# Prompt Maestro
+# PulseForge
 
-Prompt Maestro es un bot de trading de futuros USDⓈ-M para Binance con arquitectura productiva mínima viable. Incluye estrategias momentum y reversión, meta-selección ML, backtesting con vectorbt, ejecución distribuida con Celery y observabilidad vía Prometheus.
+PulseForge es un bot de trading de futuros USDⓈ-M para Binance con arquitectura productiva mínima viable. Incluye estrategias momentum y reversión, meta-selección ML, backtesting con vectorbt, ejecución distribuida con Celery y observabilidad vía Prometheus.
 
 ## Requisitos
 - Docker y docker compose

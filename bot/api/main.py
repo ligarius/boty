@@ -23,7 +23,7 @@ from ..obs.metrics import pnl_gauge, drawdown_gauge
 from ..persistence.repository import Repository
 
 configure_logging()
-app = FastAPI(title="Prompt Maestro", version="1.0")
+app = FastAPI(title="PulseForge", version="1.0")
 settings = get_settings()
 risk = RiskManager(settings)
 logger = getLogger(__name__)
