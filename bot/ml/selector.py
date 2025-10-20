@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 from joblib import dump, load
 from sklearn.metrics import f1_score
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import TimeSeriesSplit
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
@@ -47,20 +47,63 @@ class SignalSelector:
         )
         self.fitted = False
 
-    def fit(self, features: pd.DataFrame, labels: pd.Series) -> SelectorReport:
-        X_train, X_test, y_train, y_test = train_test_split(
-            features, labels, test_size=0.3, random_state=42, stratify=labels
-        )
-        self.pipeline.fit(X_train, y_train)
-        y_pred = self.pipeline.predict(X_test)
-        accuracy = float(np.mean(y_pred == y_test))
-        f1 = float(f1_score(y_test, y_pred))
+    def _fit_with_time_splits(
+        self,
+        features: pd.DataFrame,
+        labels: pd.Series,
+        *,
+        n_splits: int = 5,
+        assume_ordered: bool = False,
+    ) -> SelectorReport:
+        if not assume_ordered and not features.index.is_monotonic_increasing:
+            features = features.sort_index()
+            labels = labels.loc[features.index]
+        else:
+            labels = labels.loc[features.index]
+
+        total_samples = len(features)
+        effective_splits = max(0, min(n_splits, total_samples - 1))
+        accuracies: List[float] = []
+        f1_scores: List[float] = []
+
+        if effective_splits >= 1:
+            splitter = TimeSeriesSplit(n_splits=effective_splits)
+            for train_index, test_index in splitter.split(features):
+                if len(train_index) == 0 or len(test_index) == 0:
+                    continue
+                y_train = labels.iloc[train_index]
+                y_test = labels.iloc[test_index]
+                if y_train.nunique() < 2 or y_test.nunique() < 2:
+                    continue
+                X_train = features.iloc[train_index]
+                X_test = features.iloc[test_index]
+                self.pipeline.fit(X_train, y_train)
+                y_pred = self.pipeline.predict(X_test)
+                accuracies.append(float(np.mean(y_pred == y_test)))
+                f1_scores.append(float(f1_score(y_test, y_pred, zero_division=0)))
+
+        self.pipeline.fit(features, labels)
+        self.fitted = True
+        y_pred_all = self.pipeline.predict(features)
+        accuracy = float(np.mean(y_pred_all == labels)) if not accuracies else float(np.mean(accuracies))
+        f1_value = float(f1_score(labels, y_pred_all, zero_division=0)) if not f1_scores else float(np.mean(f1_scores))
         coefs = self.pipeline.named_steps["clf"].coef_[0]
-        feature_importances = {feature: float(weight) for feature, weight in zip(features.columns, coefs)}
+        feature_importances = {
+            feature: float(weight) for feature, weight in zip(features.columns, coefs)
+        }
         if self.model_path:
             dump(self.pipeline, self.model_path)
-        self.fitted = True
-        return SelectorReport(accuracy=accuracy, f1=f1, feature_importances=feature_importances)
+        return SelectorReport(accuracy=accuracy, f1=f1_value, feature_importances=feature_importances)
+
+    def fit(
+        self, features: pd.DataFrame, labels: pd.Series, *, n_splits: int = 5
+    ) -> SelectorReport:
+        return self._fit_with_time_splits(features, labels, n_splits=n_splits, assume_ordered=False)
+
+    def fit_ordered(
+        self, features: pd.DataFrame, labels: pd.Series, *, n_splits: int = 5
+    ) -> SelectorReport:
+        return self._fit_with_time_splits(features, labels, n_splits=n_splits, assume_ordered=True)
 
     def load(self) -> None:
         if not self.model_path:
