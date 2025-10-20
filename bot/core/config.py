@@ -41,6 +41,8 @@ class Settings(BaseSettings):
     binance_api_key: str | None = Field(default=None)
     binance_api_secret: str | None = Field(default=None)
     binance_base_url: str = Field("https://fapi.binance.com")
+    default_data_source: str = Field("binance", pattern="^(binance|synthetic|csv)$")
+    data_source_csv_path: str | None = Field(default=None)
     leverage: float = Field(3.0, ge=1.0, le=20.0)
     risk_pct: float = Field(0.01, ge=0.001, le=0.05)
     max_dd_daily: float = Field(0.03, ge=0.0, le=0.5)

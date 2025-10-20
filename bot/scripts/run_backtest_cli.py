@@ -1,12 +1,15 @@
 """CLI entrypoint and helpers for running backtests."""
 from __future__ import annotations
 
+import argparse
 from datetime import datetime
-from typing import Dict, MutableMapping
+from pathlib import Path
+from typing import Dict, MutableMapping, Optional
 import sys
 
 from ..backtest.engine import BacktestEngine, BacktestMetrics
-from ..data.loader import OHLCVRequest, generate_synthetic_data
+from ..core.config import Settings, get_settings
+from ..data.loader import OHLCVRequest, fetch_binance_ohlcv, generate_synthetic_data, load_local_csv
 
 
 def _ensure_datetime(value: datetime | str, field: str) -> datetime:
@@ -23,16 +26,41 @@ def run_backtest(
     timeframe: str,
     start: datetime | str,
     end: datetime | str,
+    *,
+    data_source: Optional[str] = None,
+    settings: Optional[Settings] = None,
+    csv_path: Optional[str | Path] = None,
 ) -> Dict[str, object]:
-    """Execute the synthetic backtest and return metrics."""
+    """Execute the backtest using the requested data source and return metrics."""
 
     start_dt = _ensure_datetime(start, "start")
     end_dt = _ensure_datetime(end, "end")
     if end_dt <= start_dt:
         raise ValueError("end must be after start")
 
+    settings = settings or get_settings()
+    source = (data_source or settings.default_data_source).lower()
+
+    request = OHLCVRequest(symbol, timeframe, start_dt, end_dt)
+    if source == "synthetic":
+        data = generate_synthetic_data(request)
+    elif source == "csv":
+        resolved_candidate = csv_path or settings.data_source_csv_path
+        if not resolved_candidate:
+            raise ValueError("CSV data source requires a path")
+        resolved_path = Path(resolved_candidate).expanduser()
+        data = load_local_csv(resolved_path)
+    elif source == "binance":
+        data = fetch_binance_ohlcv(request, settings=settings)
+    else:
+        raise ValueError(f"Unsupported data source '{source}'")
+
+    data = data.loc[(data.index >= start_dt) & (data.index < end_dt)]
+
+    if data.empty:
+        raise ValueError("No OHLCV data returned for the requested period")
+
     engine = BacktestEngine()
-    data = generate_synthetic_data(OHLCVRequest(symbol, timeframe, start_dt, end_dt))
     metrics = engine.run(data)
     training_report = (
         engine.last_training_report.to_dict() if engine.last_training_report is not None else None
@@ -72,8 +100,32 @@ def _pretty_training(report: MutableMapping[str, object]) -> str:
     return "\n".join(formatted)
 
 
-def main(symbol: str, timeframe: str, start: str, end: str) -> None:
-    payload = run_backtest(symbol, timeframe, start, end)
+def main(argv: Optional[list[str]] = None) -> None:
+    parser = argparse.ArgumentParser(description="Run a backtest for a given symbol/timeframe")
+    parser.add_argument("symbol", help="Trading pair symbol, e.g. BTCUSDT")
+    parser.add_argument("timeframe", help="Candlestick interval, e.g. 1m")
+    parser.add_argument("start", help="Start datetime in ISO format")
+    parser.add_argument("end", help="End datetime in ISO format")
+    parser.add_argument(
+        "--data-source",
+        choices=["binance", "synthetic", "csv"],
+        default=None,
+        help="Data source to use (default: configuration value)",
+    )
+    parser.add_argument(
+        "--csv-path",
+        help="Path to a local CSV file when using the csv data source",
+    )
+    args = parser.parse_args(argv)
+
+    payload = run_backtest(
+        args.symbol,
+        args.timeframe,
+        args.start,
+        args.end,
+        data_source=args.data_source,
+        csv_path=args.csv_path,
+    )
     metrics = BacktestMetrics(**payload["metrics"])  # type: ignore[arg-type]
     print("Backtest Metrics")
     print(_pretty_metrics(metrics.to_dict()))
@@ -87,4 +139,4 @@ def main(symbol: str, timeframe: str, start: str, end: str) -> None:
 
 
 if __name__ == "__main__":
-    main(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4])
+    main(sys.argv[1:])
