@@ -11,10 +11,13 @@ def restore_mode():
     """Ensure application mode is restored after each test."""
 
     original_mode = settings.mode
+    original_source = getattr(settings, "default_data_source", "binance")
+    settings.default_data_source = "synthetic"  # type: ignore[attr-defined]
     try:
         yield
     finally:
         settings.mode = original_mode  # type: ignore[misc]
+        settings.default_data_source = original_source  # type: ignore[attr-defined]
 
 
 def test_post_mode_accepts_valid_modes():

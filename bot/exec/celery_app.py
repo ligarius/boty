@@ -5,14 +5,17 @@ import json
 import logging
 import math
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Dict, List, Optional
+
+import pandas as pd
 
 from celery import Celery
 from celery.schedules import crontab
 
 from ..core.config import get_settings
 from ..core.risk import RiskManager
-from ..data.loader import OHLCVRequest, generate_synthetic_data
+from ..data.loader import OHLCVRequest, fetch_binance_ohlcv, generate_synthetic_data, load_local_csv
 from ..strategies import momentum, mean_reversion
 from ..strategies.ensemble import signal_from_row, EnsembleSelector
 from ..persistence.repository import Repository, TradeRecord
@@ -50,6 +53,24 @@ def get_worker_state() -> Dict[str, object]:
     }
 
 
+def _load_ohlcv(request: OHLCVRequest) -> pd.DataFrame:
+    source = getattr(settings, "default_data_source", "binance").lower()
+    if source == "synthetic":
+        data = generate_synthetic_data(request)
+    elif source == "csv":
+        csv_path = getattr(settings, "data_source_csv_path", None)
+        if not csv_path:
+            raise ValueError("CSV data source selected but no path configured")
+        data = load_local_csv(Path(csv_path).expanduser())
+    else:
+        data = fetch_binance_ohlcv(request, settings=settings)
+
+    if not isinstance(data, pd.DataFrame):
+        raise TypeError("Loader returned unexpected data type")
+
+    return data.loc[(data.index >= request.start) & (data.index < request.end)]
+
+
 @celery_app.on_after_configure.connect
 def setup_periodic_tasks(sender: Celery, **_: Dict) -> None:
     sender.add_periodic_task(
@@ -81,7 +102,10 @@ def evaluate_strategies() -> Dict[str, List[Dict[str, float]]]:
     try:
         for symbol in settings.universe:
             request = OHLCVRequest(symbol=symbol, timeframe="1m", start=start, end=end)
-            data = generate_synthetic_data(request)
+            data = _load_ohlcv(request)
+            if data.empty:
+                logger.warning("No OHLCV data for %s", symbol)
+                continue
             momentum_df = momentum.momentum_signals(data)
             mean_df = mean_reversion.mean_reversion_signals(data)
             signals = [
