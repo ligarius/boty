@@ -8,13 +8,14 @@ import pandas as pd
 import pytest
 
 from bot.backtest.engine import BacktestEngine, BacktestMetrics
+from bot.ml.selector import SelectorReport, SignalSelector
 from bot.strategies import mean_reversion, momentum
 
 vectorbt_available = importlib.util.find_spec("vectorbt") is not None
+requires_vectorbt = pytest.mark.skipif(not vectorbt_available, reason="vectorbt required for this test")
 
-pytestmark = pytest.mark.skipif(not vectorbt_available, reason="vectorbt required for this test")
 
-
+@requires_vectorbt
 def test_backtest_engine_run_vectorbt() -> None:
     """Ensure the engine can run end-to-end when vectorbt is available."""
 
@@ -41,6 +42,7 @@ def test_backtest_engine_run_vectorbt() -> None:
     assert isinstance(metrics, BacktestMetrics)
 
 
+@requires_vectorbt
 def test_backtest_engine_masks_warmup(monkeypatch: pytest.MonkeyPatch) -> None:
     """Regression test ensuring warm-up rows are trimmed before vectorbt execution."""
 
@@ -100,3 +102,70 @@ def test_backtest_engine_masks_warmup(monkeypatch: pytest.MonkeyPatch) -> None:
     metrics = engine.run(data)
 
     assert isinstance(metrics, BacktestMetrics)
+
+
+def test_backtest_engine_trains_and_weights(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ensure the selector is trained and probabilities reweight the signals."""
+
+    monkeypatch.setattr("bot.backtest.engine.vbt", None, raising=False)
+
+    fit_called = False
+    recorded_features: pd.DataFrame | None = None
+
+    def fake_fit(self: SignalSelector, features: pd.DataFrame, labels: pd.Series) -> SelectorReport:
+        nonlocal fit_called, recorded_features
+        fit_called = True
+        recorded_features = features.copy()
+        self.fitted = True
+        feature_weights = {feature: float(idx + 1) for idx, feature in enumerate(features.columns)}
+        return SelectorReport(accuracy=0.75, f1=0.6, feature_importances=feature_weights)
+
+    def fake_predict_proba(self: SignalSelector, features: pd.DataFrame) -> np.ndarray:
+        assert fit_called
+        if recorded_features is not None:
+            assert list(features.columns) == list(recorded_features.columns)
+        count = len(features)
+        if count == 0:
+            return np.array([])
+        return np.linspace(0.2, 0.8, num=count)
+
+    monkeypatch.setattr(SignalSelector, "fit", fake_fit, raising=False)
+    monkeypatch.setattr(SignalSelector, "predict_proba", fake_predict_proba, raising=False)
+
+    periods = 240
+    index = pd.date_range("2023-01-01", periods=periods, freq="h")
+    base = np.linspace(100, 140, periods)
+    noise = np.sin(np.linspace(0, 8 * np.pi, periods)) * 2
+    close = base + noise
+    data = pd.DataFrame(
+        {
+            "open": close + 0.3,
+            "high": close + 0.9,
+            "low": close - 0.9,
+            "close": close,
+            "volume": np.full(periods, 1500.0),
+        },
+        index=index,
+    )
+
+    engine = BacktestEngine()
+    metrics = engine.run(data)
+
+    assert fit_called, "SignalSelector.fit should be invoked"
+    assert engine.last_training_report is not None
+    assert metrics.training_accuracy == pytest.approx(0.75)
+    assert metrics.training_f1 == pytest.approx(0.6)
+
+    probabilities = engine.last_signal_probabilities
+    assert probabilities is not None
+    assert not probabilities.empty
+    expected = np.linspace(0.2, 0.8, num=len(probabilities))
+    np.testing.assert_allclose(probabilities["probability"].to_numpy(), expected)
+    np.testing.assert_allclose(
+        probabilities["weighted_score"].to_numpy(),
+        probabilities["score"].to_numpy() * probabilities["probability"].to_numpy(),
+    )
+
+    weighted_scores = engine.last_weighted_scores
+    assert weighted_scores is not None
+    assert weighted_scores.index.equals(data.index)
