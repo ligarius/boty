@@ -48,6 +48,7 @@ class BacktestEngine:
         self.risk = RiskManager(self.settings)
         self.selector_threshold = float(getattr(self.settings, "selector_threshold", 0.1))
         self.selector_horizon = int(getattr(self.settings, "selector_horizon", 5))
+        self.selector_window = int(getattr(self.settings, "selector_window", 100))
         self.last_training_report: SelectorReport | None = None
         self.last_signal_probabilities: pd.DataFrame | None = None
         self.last_weighted_scores: pd.Series | None = None
@@ -146,7 +147,7 @@ class BacktestEngine:
         return features_df, labels_series, metadata_df, signals_objects
 
     def _train_selector(
-        self, features: pd.DataFrame, labels: pd.Series
+        self, features: pd.DataFrame, labels: pd.Series, metadata: pd.DataFrame
     ) -> Tuple[SelectorReport | None, pd.Series]:
         if features.empty or len(features) < 2 or labels.nunique() < 2:
             if features.empty:
@@ -154,9 +155,46 @@ class BacktestEngine:
             baseline = pd.Series(np.ones(len(features)), index=features.index, dtype=float)
             return None, baseline
 
-        selector = SignalSelector(model_path=None)
-        report = selector.fit(features, labels)
-        probabilities = pd.Series(selector.predict_proba(features), index=features.index, dtype=float)
+        if "timestamp" not in metadata.columns:
+            raise ValueError("metadata must contain a 'timestamp' column for walk-forward training")
+
+        sortable_metadata = metadata.loc[features.index].copy()
+        sortable_metadata["timestamp"] = pd.to_datetime(sortable_metadata["timestamp"])
+        sortable_metadata["__order"] = np.arange(len(sortable_metadata))
+        sort_columns = ["timestamp"]
+        if "source" in sortable_metadata.columns:
+            sort_columns.append("source")
+        sort_columns.append("__order")
+        ordered_indices = sortable_metadata.sort_values(sort_columns).index
+
+        sorted_features = features.loc[ordered_indices]
+        sorted_labels = labels.loc[ordered_indices]
+
+        window_size = max(int(self.selector_window), 1)
+        probabilities = pd.Series(np.nan, index=sorted_features.index, dtype=float)
+        reports: List[SelectorReport] = []
+
+        for start in range(0, len(sorted_features), window_size):
+            end = min(start + window_size, len(sorted_features))
+            window_indices = sorted_features.index[start:end]
+            train_indices = sorted_features.index[:start]
+            if len(train_indices) < 2 or sorted_labels.loc[train_indices].nunique() < 2:
+                probabilities.loc[window_indices] = 1.0
+                continue
+
+            selector = SignalSelector(model_path=None)
+            report = selector.fit_ordered(
+                sorted_features.loc[train_indices],
+                sorted_labels.loc[train_indices],
+            )
+            reports.append(report)
+            window_probas = selector.predict_proba(sorted_features.loc[window_indices])
+            probabilities.loc[window_indices] = window_probas
+
+        probabilities = probabilities.fillna(1.0)
+        probabilities = probabilities.reindex(features.index)
+
+        report: SelectorReport | None = reports[-1] if reports else None
         return report, probabilities
 
     def run(self, data: pd.DataFrame) -> BacktestMetrics:
@@ -164,11 +202,11 @@ class BacktestEngine:
         mean_df = mean_reversion.mean_reversion_signals(data).reindex(data.index)
 
         features, labels, signal_metadata, signals = self._build_training_samples(data, momentum_df, mean_df)
-        report, probabilities = self._train_selector(features, labels)
+        report, probabilities = self._train_selector(features, labels, signal_metadata)
         self.last_training_report = report
         self.last_signals = signals
 
-        probability_table = signal_metadata.copy()
+        probability_table = signal_metadata.sort_values("timestamp").copy()
         if probability_table.empty:
             probability_table["probability"] = pd.Series(dtype=float)
             probability_table["weighted_score"] = pd.Series(dtype=float)

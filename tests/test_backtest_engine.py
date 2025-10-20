@@ -109,27 +109,25 @@ def test_backtest_engine_trains_and_weights(monkeypatch: pytest.MonkeyPatch) -> 
 
     monkeypatch.setattr("bot.backtest.engine.vbt", None, raising=False)
 
-    fit_called = False
-    recorded_features: pd.DataFrame | None = None
+    fit_calls = 0
 
-    def fake_fit(self: SignalSelector, features: pd.DataFrame, labels: pd.Series) -> SelectorReport:
-        nonlocal fit_called, recorded_features
-        fit_called = True
-        recorded_features = features.copy()
+    def fake_fit_ordered(
+        self: SignalSelector, features: pd.DataFrame, labels: pd.Series, *, n_splits: int = 5
+    ) -> SelectorReport:
+        nonlocal fit_calls
+        fit_calls += 1
         self.fitted = True
         feature_weights = {feature: float(idx + 1) for idx, feature in enumerate(features.columns)}
         return SelectorReport(accuracy=0.75, f1=0.6, feature_importances=feature_weights)
 
     def fake_predict_proba(self: SignalSelector, features: pd.DataFrame) -> np.ndarray:
-        assert fit_called
-        if recorded_features is not None:
-            assert list(features.columns) == list(recorded_features.columns)
+        assert fit_calls > 0
         count = len(features)
         if count == 0:
             return np.array([])
-        return np.linspace(0.2, 0.8, num=count)
+        return np.full(count, 0.7)
 
-    monkeypatch.setattr(SignalSelector, "fit", fake_fit, raising=False)
+    monkeypatch.setattr(SignalSelector, "fit_ordered", fake_fit_ordered, raising=False)
     monkeypatch.setattr(SignalSelector, "predict_proba", fake_predict_proba, raising=False)
 
     periods = 240
@@ -151,7 +149,7 @@ def test_backtest_engine_trains_and_weights(monkeypatch: pytest.MonkeyPatch) -> 
     engine = BacktestEngine()
     metrics = engine.run(data)
 
-    assert fit_called, "SignalSelector.fit should be invoked"
+    assert fit_calls > 0, "SignalSelector.fit_ordered should be invoked"
     assert engine.last_training_report is not None
     assert metrics.training_accuracy == pytest.approx(0.75)
     assert metrics.training_f1 == pytest.approx(0.6)
@@ -159,8 +157,8 @@ def test_backtest_engine_trains_and_weights(monkeypatch: pytest.MonkeyPatch) -> 
     probabilities = engine.last_signal_probabilities
     assert probabilities is not None
     assert not probabilities.empty
-    expected = np.linspace(0.2, 0.8, num=len(probabilities))
-    np.testing.assert_allclose(probabilities["probability"].to_numpy(), expected)
+    assert set(probabilities["probability"].unique()).issubset({1.0, 0.7})
+    assert (probabilities["probability"] == 0.7).any()
     np.testing.assert_allclose(
         probabilities["weighted_score"].to_numpy(),
         probabilities["score"].to_numpy() * probabilities["probability"].to_numpy(),
