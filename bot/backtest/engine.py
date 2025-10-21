@@ -52,6 +52,7 @@ class BacktestEngine:
         self.last_training_report: SelectorReport | None = None
         self.last_signal_probabilities: pd.DataFrame | None = None
         self.last_weighted_scores: pd.Series | None = None
+        self.last_weighted_scores_raw: pd.Series | None = None
         self.last_signals: List[Signal] = []
 
     @staticmethod
@@ -224,12 +225,20 @@ class BacktestEngine:
             )
 
         self.last_signal_probabilities = probability_table
-        self.last_weighted_scores = weighted_scores
+        raw_weighted_scores = weighted_scores.astype(float)
+        abs_max = raw_weighted_scores.abs().max()
+        if abs_max and abs_max > 0:
+            normalized_weighted_scores = raw_weighted_scores / abs_max
+        else:
+            normalized_weighted_scores = raw_weighted_scores.copy()
+
+        self.last_weighted_scores_raw = raw_weighted_scores
+        self.last_weighted_scores = normalized_weighted_scores
 
         threshold = float(self.selector_threshold)
         final_signal = pd.Series(0, index=data.index, dtype=int)
-        final_signal.loc[weighted_scores > threshold] = 1
-        final_signal.loc[weighted_scores < -threshold] = -1
+        final_signal.loc[normalized_weighted_scores > threshold] = 1
+        final_signal.loc[normalized_weighted_scores < -threshold] = -1
 
         momentum_ready = momentum_df.drop(columns=["signal", "score"], errors="ignore").notna().all(axis=1)
         mean_ready = mean_df.drop(columns=["signal", "score"], errors="ignore").notna().all(axis=1)
@@ -238,7 +247,11 @@ class BacktestEngine:
             valid_mask = pd.Series(True, index=data.index)
 
         final_signal = final_signal.where(valid_mask, 0)
-        weighted_scores = weighted_scores.where(valid_mask, 0.0)
+        normalized_weighted_scores = normalized_weighted_scores.where(valid_mask, 0.0)
+        raw_weighted_scores = raw_weighted_scores.where(valid_mask, 0.0)
+
+        self.last_weighted_scores = normalized_weighted_scores
+        self.last_weighted_scores_raw = raw_weighted_scores
 
         price = data.loc[valid_mask, "close"]
         final_valid = final_signal.loc[valid_mask]
