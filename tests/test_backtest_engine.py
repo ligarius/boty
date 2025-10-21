@@ -197,6 +197,57 @@ def test_backtest_engine_trains_and_weights(monkeypatch: pytest.MonkeyPatch) -> 
         np.testing.assert_allclose(weighted_scores.to_numpy(), raw_scores.to_numpy())
 
 
+def test_backtest_engine_accepts_strategy_params(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ensure custom strategy parameters are forwarded to the strategy functions."""
+
+    monkeypatch.setattr("bot.backtest.engine.vbt", None, raising=False)
+
+    periods = 120
+    index = pd.date_range("2023-02-01", periods=periods, freq="h")
+    base = np.linspace(100, 120, periods)
+    data = pd.DataFrame(
+        {
+            "open": base + 0.1,
+            "high": base + 0.3,
+            "low": base - 0.3,
+            "close": base,
+            "volume": np.full(periods, 1000.0),
+        },
+        index=index,
+    )
+
+    momentum_calls: dict[str, object] = {}
+    mean_calls: dict[str, object] = {}
+
+    original_momentum = momentum.momentum_signals
+    original_mean = mean_reversion.mean_reversion_signals
+
+    def wrapped_momentum(df, **kwargs):  # type: ignore[no-untyped-def]
+        momentum_calls.update(kwargs)
+        return original_momentum(df, **kwargs)
+
+    def wrapped_mean(df, **kwargs):  # type: ignore[no-untyped-def]
+        mean_calls.update(kwargs)
+        return original_mean(df, **kwargs)
+
+    monkeypatch.setattr(momentum, "momentum_signals", wrapped_momentum)
+    monkeypatch.setattr(mean_reversion, "mean_reversion_signals", wrapped_mean)
+
+    engine = BacktestEngine()
+    engine.selector_threshold = 0.05
+
+    metrics = engine.run(
+        data,
+        timeframe="1h",
+        momentum_params={"fast": 7, "slow": 55, "adx_period": 16},
+        mean_reversion_params={"window": 22, "z_threshold": 1.9},
+    )
+
+    assert isinstance(metrics, BacktestMetrics)
+    assert momentum_calls == {"fast": 7, "slow": 55, "adx_period": 16}
+    assert mean_calls == {"window": 22, "z_threshold": 1.9}
+
+
 def test_backtest_engine_normalizes_and_generates_trades(monkeypatch: pytest.MonkeyPatch) -> None:
     """Deterministic scenario where normalized scores trigger trades and metrics are non-zero."""
 

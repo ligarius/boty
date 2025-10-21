@@ -225,10 +225,20 @@ class BacktestEngine:
                 return first
         return "UNKNOWN"
 
-    def run(self, data: pd.DataFrame, timeframe: str | None = None) -> BacktestMetrics:
+    def run(
+        self,
+        data: pd.DataFrame,
+        timeframe: str | None = None,
+        *,
+        momentum_params: Dict[str, float] | None = None,
+        mean_reversion_params: Dict[str, float] | None = None,
+    ) -> BacktestMetrics:
         effective_timeframe = self._resolve_timeframe(data, timeframe)
-        momentum_df = momentum.momentum_signals(data).reindex(data.index)
-        mean_df = mean_reversion.mean_reversion_signals(data).reindex(data.index)
+        momentum_params = momentum_params or {}
+        mean_reversion_params = mean_reversion_params or {}
+
+        momentum_df = momentum.momentum_signals(data, **momentum_params).reindex(data.index)
+        mean_df = mean_reversion.mean_reversion_signals(data, **mean_reversion_params).reindex(data.index)
 
         features, labels, signal_metadata, signals = self._build_training_samples(
             data,
