@@ -29,6 +29,8 @@ _STANDARD_RECORD_ATTRS = {
     "process",
     "message",
     "extra",
+    "task",
+    "taskName",
 }
 
 

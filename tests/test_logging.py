@@ -26,3 +26,26 @@ def test_json_formatter_includes_extra_fields() -> None:
     assert payload["logger"] == "test-logger"
     assert payload["user_id"] == 123
     assert payload["context"] == {"state": "ok"}
+
+
+def test_json_formatter_ignores_task_attribute() -> None:
+    record = logging.LogRecord(
+        name="async-logger",
+        level=logging.DEBUG,
+        pathname=__file__,
+        lineno=42,
+        msg="Running coroutine",
+        args=(),
+        exc_info=None,
+    )
+    record.task = object()
+
+    formatter = JsonFormatter()
+
+    payload = json.loads(formatter.format(record))
+
+    assert payload["level"] == "DEBUG"
+    assert payload["message"] == "Running coroutine"
+    assert payload["logger"] == "async-logger"
+    assert "task" not in payload
+    assert "taskName" not in payload
