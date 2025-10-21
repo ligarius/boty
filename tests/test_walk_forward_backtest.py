@@ -37,7 +37,7 @@ def test_walk_forward_probabilities_stable_without_future_data():
 
     full_engine = BacktestEngine()
     full_engine.selector_window = 40
-    full_engine.run(data_full)
+    full_engine.run(data_full, "1h")
     probabilities_full = full_engine.last_signal_probabilities
     assert probabilities_full is not None
     assert not probabilities_full.empty
@@ -45,7 +45,7 @@ def test_walk_forward_probabilities_stable_without_future_data():
 
     truncated_engine = BacktestEngine()
     truncated_engine.selector_window = 40
-    truncated_engine.run(data_truncated)
+    truncated_engine.run(data_truncated, "1h")
     probabilities_truncated = truncated_engine.last_signal_probabilities
     assert probabilities_truncated is not None
     assert not probabilities_truncated.empty

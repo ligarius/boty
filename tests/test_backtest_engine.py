@@ -11,6 +11,7 @@ from bot.backtest.engine import BacktestEngine, BacktestMetrics
 from bot.core.config import Settings
 from bot.ml.selector import SelectorReport, SignalSelector
 from bot.strategies import mean_reversion, momentum
+from bot.strategies.ensemble import Signal
 
 vectorbt_available = importlib.util.find_spec("vectorbt") is not None
 requires_vectorbt = pytest.mark.skipif(not vectorbt_available, reason="vectorbt required for this test")
@@ -38,7 +39,7 @@ def test_backtest_engine_run_vectorbt() -> None:
     )
 
     engine = BacktestEngine()
-    metrics = engine.run(data)
+    metrics = engine.run(data, "1h")
 
     assert isinstance(metrics, BacktestMetrics)
 
@@ -118,7 +119,7 @@ def test_backtest_engine_masks_warmup(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(vbt.Portfolio, "from_signals", checking)
 
     engine = BacktestEngine()
-    metrics = engine.run(data)
+    metrics = engine.run(data, "1h")
 
     assert isinstance(metrics, BacktestMetrics)
 
@@ -166,7 +167,7 @@ def test_backtest_engine_trains_and_weights(monkeypatch: pytest.MonkeyPatch) -> 
     )
 
     engine = BacktestEngine()
-    metrics = engine.run(data)
+    metrics = engine.run(data, "1h")
 
     assert fit_calls > 0, "SignalSelector.fit_ordered should be invoked"
     assert engine.last_training_report is not None
@@ -195,6 +196,98 @@ def test_backtest_engine_trains_and_weights(monkeypatch: pytest.MonkeyPatch) -> 
         assert pytest.approx(1.0) == weighted_scores.abs().max()
     else:
         np.testing.assert_allclose(weighted_scores.to_numpy(), raw_scores.to_numpy())
+
+
+def test_backtest_engine_preserves_requested_timeframe(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ensure the timeframe passed to run() propagates to the generated signals."""
+
+    monkeypatch.setattr("bot.backtest.engine.vbt", None, raising=False)
+
+    engine = BacktestEngine()
+    custom_timeframe = "13m"
+    default_timeframe = (
+        engine.settings.timeframes[0] if getattr(engine.settings, "timeframes", None) else None
+    )
+    assert custom_timeframe != default_timeframe
+
+    index = pd.date_range("2024-01-01", periods=6, freq="min")
+    data = pd.DataFrame(
+        {
+            "open": np.linspace(100, 105, len(index)),
+            "high": np.linspace(101, 106, len(index)),
+            "low": np.linspace(99, 104, len(index)),
+            "close": np.linspace(100, 105, len(index)),
+            "volume": np.full(len(index), 10.0),
+        },
+        index=index,
+    )
+
+    symbol = engine.settings.universe[0] if getattr(engine.settings, "universe", None) else "BTCUSDT"
+    captured_timeframes: list[str] = []
+
+    def fake_build_training_samples(
+        self: BacktestEngine,
+        data: pd.DataFrame,
+        momentum_df: pd.DataFrame,
+        mean_df: pd.DataFrame,
+        timeframe: str,
+    ) -> tuple[pd.DataFrame, pd.Series, pd.DataFrame, list[Signal]]:
+        captured_timeframes.append(timeframe)
+        feature_index = pd.Index([0, 1])
+        features = pd.DataFrame(
+            {"feature_a": [0.1, 0.2], "strategy_id": [0.0, 1.0]},
+            index=feature_index,
+        )
+        labels = pd.Series([1, 0], index=feature_index, dtype=int)
+        metadata = pd.DataFrame(
+            {
+                "timestamp": data.index[:2],
+                "score": [0.9, -0.8],
+                "signal": [1, -1],
+                "atr": [np.nan, np.nan],
+                "source": ["momentum", "mean_reversion"],
+            },
+            index=feature_index,
+        )
+        signals = [
+            Signal(
+                symbol=symbol,
+                timeframe=timeframe,
+                signal=1,
+                score=0.9,
+                atr=float("nan"),
+                features={"feature_a": 0.1, "strategy_id": 0.0},
+            ),
+            Signal(
+                symbol=symbol,
+                timeframe=timeframe,
+                signal=-1,
+                score=-0.8,
+                atr=float("nan"),
+                features={"feature_a": 0.2, "strategy_id": 1.0},
+            ),
+        ]
+        return features, labels, metadata, signals
+
+    def fake_train_selector(
+        self: BacktestEngine, features: pd.DataFrame, labels: pd.Series, metadata: pd.DataFrame
+    ) -> tuple[SelectorReport | None, pd.Series]:
+        return None, pd.Series(1.0, index=features.index, dtype=float)
+
+    monkeypatch.setattr(
+        BacktestEngine, "_build_training_samples", fake_build_training_samples, raising=False
+    )
+    monkeypatch.setattr(BacktestEngine, "_train_selector", fake_train_selector, raising=False)
+
+    metrics = engine.run(data, custom_timeframe)
+
+    assert isinstance(metrics, BacktestMetrics)
+    assert captured_timeframes == [custom_timeframe]
+    assert engine.last_signals
+    observed_timeframes = {signal.timeframe for signal in engine.last_signals}
+    assert observed_timeframes == {custom_timeframe}
+    if default_timeframe is not None:
+        assert default_timeframe not in observed_timeframes
 
 
 def test_backtest_engine_normalizes_and_generates_trades(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -245,7 +338,7 @@ def test_backtest_engine_normalizes_and_generates_trades(monkeypatch: pytest.Mon
 
     engine = BacktestEngine()
     engine.selector_threshold = 0.2
-    metrics = engine.run(data)
+    metrics = engine.run(data, "1h")
 
     normalized_scores = engine.last_weighted_scores
     raw_scores = engine.last_weighted_scores_raw
