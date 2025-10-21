@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     telegram_token: str | None = Field(default=None)
     telegram_chat_id: str | None = Field(default=None)
     prometheus_port: int = Field(9000, ge=1024, le=65535)
+    selector_threshold: float = Field(0.02, ge=0.0, le=1.0)
+    selector_horizon: int = Field(5, ge=1)
+    selector_window: int = Field(100, ge=1)
 
     model_config = SettingsConfigDict(
         env_file=".env",

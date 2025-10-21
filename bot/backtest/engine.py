@@ -46,9 +46,9 @@ class BacktestEngine:
     def __init__(self) -> None:
         self.settings = get_settings()
         self.risk = RiskManager(self.settings)
-        self.selector_threshold = float(getattr(self.settings, "selector_threshold", 0.1))
-        self.selector_horizon = int(getattr(self.settings, "selector_horizon", 5))
-        self.selector_window = int(getattr(self.settings, "selector_window", 100))
+        self.selector_threshold = float(self.settings.selector_threshold)
+        self.selector_horizon = int(self.settings.selector_horizon)
+        self.selector_window = int(self.settings.selector_window)
         self.last_training_report: SelectorReport | None = None
         self.last_signal_probabilities: pd.DataFrame | None = None
         self.last_weighted_scores: pd.Series | None = None
