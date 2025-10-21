@@ -55,9 +55,24 @@ class Settings(BaseSettings):
     telegram_token: str | None = Field(default=None)
     telegram_chat_id: str | None = Field(default=None)
     prometheus_port: int = Field(9000, ge=1024, le=65535)
-    selector_threshold: float = Field(0.05, ge=0.0, le=1.0)
-    selector_horizon: int = Field(5, ge=1)
-    selector_window: int = Field(100, ge=1)
+    selector_threshold: float = Field(
+        0.05,
+        ge=0.0,
+        le=1.0,
+        description="Probability threshold applied to ML selector scores.",
+    )
+    selector_horizon: int = Field(
+        5,
+        ge=1,
+        le=50,
+        description="Forward return horizon (in bars) used to label training samples.",
+    )
+    selector_window: int = Field(
+        100,
+        ge=10,
+        le=2000,
+        description="Rolling window size (in samples) for walk-forward selector training.",
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",
