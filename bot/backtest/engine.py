@@ -226,14 +226,12 @@ class BacktestEngine:
 
         self.last_signal_probabilities = probability_table
         raw_weighted_scores = weighted_scores.astype(float)
+        rescaled_reference = raw_weighted_scores.copy()
         abs_max = raw_weighted_scores.abs().max()
         if abs_max and abs_max > 0:
             normalized_weighted_scores = raw_weighted_scores / abs_max
         else:
             normalized_weighted_scores = raw_weighted_scores.copy()
-
-        self.last_weighted_scores_raw = raw_weighted_scores
-        self.last_weighted_scores = normalized_weighted_scores
 
         threshold = float(self.selector_threshold)
         final_signal = pd.Series(0, index=data.index, dtype=int)
@@ -248,10 +246,9 @@ class BacktestEngine:
 
         final_signal = final_signal.where(valid_mask, 0)
         normalized_weighted_scores = normalized_weighted_scores.where(valid_mask, 0.0)
-        raw_weighted_scores = raw_weighted_scores.where(valid_mask, 0.0)
 
         self.last_weighted_scores = normalized_weighted_scores
-        self.last_weighted_scores_raw = raw_weighted_scores
+        self.last_weighted_scores_raw = rescaled_reference
 
         price = data.loc[valid_mask, "close"]
         final_valid = final_signal.loc[valid_mask]
