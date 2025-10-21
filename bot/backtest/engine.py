@@ -66,7 +66,7 @@ class BacktestEngine:
         data: pd.DataFrame,
         momentum_df: pd.DataFrame,
         mean_df: pd.DataFrame,
-        timeframe: str,
+        effective_timeframe: str,
     ) -> Tuple[pd.DataFrame, pd.Series, pd.DataFrame, List[Signal]]:
         future_returns = data["close"].pct_change(periods=self.selector_horizon).shift(-self.selector_horizon)
         feature_sets: List[Dict[str, float]] = []
@@ -75,7 +75,7 @@ class BacktestEngine:
 
         symbol = self.settings.universe[0] if getattr(self.settings, "universe", None) else "UNKNOWN"
 
-        resolved_timeframe = timeframe or "UNKNOWN"
+        resolved_timeframe = effective_timeframe or "UNKNOWN"
 
         strategies: List[Tuple[str, pd.DataFrame, float]] = [
             ("momentum", momentum_df, 0.0),
@@ -226,7 +226,7 @@ class BacktestEngine:
         return "UNKNOWN"
 
     def run(self, data: pd.DataFrame, timeframe: str | None = None) -> BacktestMetrics:
-        resolved_timeframe = self._resolve_timeframe(data, timeframe)
+        effective_timeframe = self._resolve_timeframe(data, timeframe)
         momentum_df = momentum.momentum_signals(data).reindex(data.index)
         mean_df = mean_reversion.mean_reversion_signals(data).reindex(data.index)
 
@@ -234,7 +234,7 @@ class BacktestEngine:
             data,
             momentum_df,
             mean_df,
-            resolved_timeframe,
+            effective_timeframe,
         )
         report, probabilities = self._train_selector(features, labels, signal_metadata)
         self.last_training_report = report
