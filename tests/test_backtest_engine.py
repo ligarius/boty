@@ -47,9 +47,9 @@ def test_backtest_engine_reads_selector_settings(monkeypatch: pytest.MonkeyPatch
     """Ensure BacktestEngine picks selector configuration from Settings."""
 
     custom_settings = Settings(
-        selector_threshold=0.15,
-        selector_horizon=9,
-        selector_window=55,
+        selector_threshold=0.8,
+        selector_horizon=50,
+        selector_window=2000,
     )
 
     monkeypatch.setattr("bot.backtest.engine.get_settings", lambda: custom_settings)

@@ -30,6 +30,10 @@ TELEGRAM_TOKEN=
 TELEGRAM_CHAT_ID=
 ```
 
+- `SELECTOR_THRESHOLD`: Probabilidad mínima (0.0 - 1.0) para habilitar operaciones sugeridas por el selector ML.
+- `SELECTOR_HORIZON`: Cantidad de velas (1 - 50) utilizada para calcular los rendimientos futuros en el entrenamiento.
+- `SELECTOR_WINDOW`: Número de muestras (10 - 2000) procesadas en cada ventana de entrenamiento walk-forward.
+
 ## Ejecución con Docker
 
 Levantar toda la plataforma (API, worker Celery, Redis, Postgres y Prometheus):
