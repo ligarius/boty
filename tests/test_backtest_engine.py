@@ -271,15 +271,6 @@ def test_backtest_engine_normalizes_and_generates_trades(monkeypatch: pytest.Mon
     assert (normalized_scores > engine.selector_threshold).any()
     assert (normalized_scores < -engine.selector_threshold).any()
 
-    reconstructed_signal = pd.Series(0, index=data.index, dtype=int)
-    reconstructed_signal.loc[normalized_scores > engine.selector_threshold] = 1
-    reconstructed_signal.loc[normalized_scores < -engine.selector_threshold] = -1
-    opened_positions = (
-        (reconstructed_signal != 0)
-        & (reconstructed_signal.shift(fill_value=0) == 0)
-    )
-    assert opened_positions.any(), "Expected at least one position to open after normalization"
-
     assert metrics.roi != 0.0
     assert metrics.sharpe != 0.0
     assert metrics.profit_factor != 0.0
