@@ -167,3 +167,81 @@ def test_backtest_engine_trains_and_weights(monkeypatch: pytest.MonkeyPatch) -> 
     weighted_scores = engine.last_weighted_scores
     assert weighted_scores is not None
     assert weighted_scores.index.equals(data.index)
+    raw_scores = engine.last_weighted_scores_raw
+    assert raw_scores is not None
+    assert raw_scores.index.equals(data.index)
+    max_abs = raw_scores.abs().max()
+    if max_abs > 0:
+        np.testing.assert_allclose(weighted_scores.to_numpy(), raw_scores.to_numpy() / max_abs)
+        assert pytest.approx(1.0) == weighted_scores.abs().max()
+    else:
+        np.testing.assert_allclose(weighted_scores.to_numpy(), raw_scores.to_numpy())
+
+
+def test_backtest_engine_normalizes_and_generates_trades(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Deterministic scenario where normalized scores trigger trades and metrics are non-zero."""
+
+    monkeypatch.setattr("bot.backtest.engine.vbt", None, raising=False)
+
+    def fake_momentum_signals(data: pd.DataFrame) -> pd.DataFrame:
+        return pd.DataFrame(
+            {"signal": 1, "score": 2.5},
+            index=data.index,
+        )
+
+    def fake_mean_reversion_signals(data: pd.DataFrame) -> pd.DataFrame:
+        signals = pd.Series(0, index=data.index, dtype=int)
+        signals.iloc[::15] = -1
+        scores = signals.astype(float) * 1.5
+        return pd.DataFrame({"signal": signals, "score": scores}, index=data.index)
+
+    def fake_train_selector(
+        self: BacktestEngine, features: pd.DataFrame, labels: pd.Series, metadata: pd.DataFrame
+    ) -> tuple[SelectorReport | None, pd.Series]:
+        if metadata.empty:
+            return SelectorReport(accuracy=0.8, f1=0.7, feature_importances={}), pd.Series(dtype=float)
+        probabilities = pd.Series(0.95, index=metadata.index, dtype=float)
+        report = SelectorReport(accuracy=0.8, f1=0.7, feature_importances={})
+        return report, probabilities
+
+    monkeypatch.setattr(momentum, "momentum_signals", fake_momentum_signals, raising=False)
+    monkeypatch.setattr(mean_reversion, "mean_reversion_signals", fake_mean_reversion_signals, raising=False)
+    monkeypatch.setattr(BacktestEngine, "_train_selector", fake_train_selector, raising=False)
+
+    periods = 360
+    index = pd.date_range("2024-01-01", periods=periods, freq="h")
+    base = np.linspace(100, 160, periods)
+    oscillation = np.sin(np.linspace(0, 4 * np.pi, periods))
+    close = base + oscillation
+    data = pd.DataFrame(
+        {
+            "open": close + 0.2,
+            "high": close + 0.8,
+            "low": close - 0.8,
+            "close": close,
+            "volume": np.full(periods, 1200.0),
+        },
+        index=index,
+    )
+
+    engine = BacktestEngine()
+    engine.selector_threshold = 0.2
+    metrics = engine.run(data)
+
+    normalized_scores = engine.last_weighted_scores
+    raw_scores = engine.last_weighted_scores_raw
+    assert normalized_scores is not None
+    assert raw_scores is not None
+    assert normalized_scores.index.equals(data.index)
+    assert raw_scores.index.equals(data.index)
+
+    max_abs = raw_scores.abs().max()
+    assert max_abs > 0
+    np.testing.assert_allclose(normalized_scores.to_numpy(), raw_scores.to_numpy() / max_abs)
+    assert normalized_scores.abs().max() == pytest.approx(1.0)
+    assert (normalized_scores > engine.selector_threshold).any()
+
+    assert metrics.roi != 0.0
+    assert metrics.sharpe != 0.0
+    assert metrics.profit_factor != 0.0
+    assert metrics.win_rate != 0.0
