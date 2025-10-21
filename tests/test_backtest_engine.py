@@ -8,6 +8,7 @@ import pandas as pd
 import pytest
 
 from bot.backtest.engine import BacktestEngine, BacktestMetrics
+from bot.core.config import Settings
 from bot.ml.selector import SelectorReport, SignalSelector
 from bot.strategies import mean_reversion, momentum
 
@@ -40,6 +41,24 @@ def test_backtest_engine_run_vectorbt() -> None:
     metrics = engine.run(data)
 
     assert isinstance(metrics, BacktestMetrics)
+
+
+def test_backtest_engine_reads_selector_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ensure BacktestEngine picks selector configuration from Settings."""
+
+    custom_settings = Settings(
+        selector_threshold=0.15,
+        selector_horizon=9,
+        selector_window=55,
+    )
+
+    monkeypatch.setattr("bot.backtest.engine.get_settings", lambda: custom_settings)
+
+    engine = BacktestEngine()
+
+    assert engine.selector_threshold == pytest.approx(custom_settings.selector_threshold)
+    assert engine.selector_horizon == custom_settings.selector_horizon
+    assert engine.selector_window == custom_settings.selector_window
 
 
 @requires_vectorbt
