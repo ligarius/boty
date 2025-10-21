@@ -38,7 +38,7 @@ def test_backtest_engine_run_vectorbt() -> None:
     )
 
     engine = BacktestEngine()
-    metrics = engine.run(data)
+    metrics = engine.run(data, timeframe="1h")
 
     assert isinstance(metrics, BacktestMetrics)
 
@@ -118,7 +118,7 @@ def test_backtest_engine_masks_warmup(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(vbt.Portfolio, "from_signals", checking)
 
     engine = BacktestEngine()
-    metrics = engine.run(data)
+    metrics = engine.run(data, timeframe="1h")
 
     assert isinstance(metrics, BacktestMetrics)
 
@@ -166,7 +166,7 @@ def test_backtest_engine_trains_and_weights(monkeypatch: pytest.MonkeyPatch) -> 
     )
 
     engine = BacktestEngine()
-    metrics = engine.run(data)
+    metrics = engine.run(data, timeframe="1h")
 
     assert fit_calls > 0, "SignalSelector.fit_ordered should be invoked"
     assert engine.last_training_report is not None
@@ -254,7 +254,7 @@ def test_backtest_engine_normalizes_and_generates_trades(monkeypatch: pytest.Mon
     )
 
     engine = BacktestEngine()
-    metrics = engine.run(data)
+    metrics = engine.run(data, timeframe="1h")
 
     normalized_scores = engine.last_weighted_scores
     raw_scores = engine.last_weighted_scores_raw
@@ -275,3 +275,58 @@ def test_backtest_engine_normalizes_and_generates_trades(monkeypatch: pytest.Mon
     assert metrics.sharpe != 0.0
     assert metrics.profit_factor != 0.0
     assert metrics.win_rate != 0.0
+
+
+def test_backtest_engine_last_signals_preserve_timeframe(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Signals produced by the engine should retain the timeframe provided to run()."""
+
+    monkeypatch.setattr("bot.backtest.engine.vbt", None, raising=False)
+
+    def fake_momentum_signals(data: pd.DataFrame) -> pd.DataFrame:
+        df = pd.DataFrame(
+            {
+                "signal": np.zeros(len(data), dtype=int),
+                "score": np.zeros(len(data), dtype=float),
+                "atr": np.full(len(data), 500.0),
+                "feature_a": np.linspace(0.1, 1.0, len(data)),
+            },
+            index=data.index,
+        )
+        trigger_idx = data.index[6]
+        df.loc[trigger_idx, "signal"] = 1
+        df.loc[trigger_idx, "score"] = 0.5
+        return df
+
+    def fake_mean_reversion_signals(data: pd.DataFrame) -> pd.DataFrame:
+        return pd.DataFrame(
+            {
+                "signal": np.zeros(len(data), dtype=int),
+                "score": np.zeros(len(data), dtype=float),
+                "atr": np.full(len(data), 400.0),
+                "feature_b": np.linspace(1.0, 0.1, len(data)),
+            },
+            index=data.index,
+        )
+
+    monkeypatch.setattr(momentum, "momentum_signals", fake_momentum_signals, raising=False)
+    monkeypatch.setattr(mean_reversion, "mean_reversion_signals", fake_mean_reversion_signals, raising=False)
+
+    periods = 32
+    index = pd.date_range("2024-06-01", periods=periods, freq="h")
+    close = np.linspace(100, 120, periods)
+    data = pd.DataFrame(
+        {
+            "open": close + 0.1,
+            "high": close + 0.5,
+            "low": close - 0.5,
+            "close": close,
+            "volume": np.full(periods, 900.0),
+        },
+        index=index,
+    )
+
+    engine = BacktestEngine()
+    engine.run(data, timeframe="15m")
+
+    assert engine.last_signals, "Expected at least one generated signal"
+    assert all(signal.timeframe == "15m" for signal in engine.last_signals)

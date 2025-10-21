@@ -61,7 +61,7 @@ def run_backtest(
         raise ValueError("No OHLCV data returned for the requested period")
 
     engine = BacktestEngine()
-    metrics = engine.run(data)
+    metrics = engine.run(data, timeframe=timeframe)
     training_report = (
         engine.last_training_report.to_dict() if engine.last_training_report is not None else None
     )

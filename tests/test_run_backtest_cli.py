@@ -53,6 +53,7 @@ def test_run_backtest_uses_real_loader(monkeypatch) -> None:
 
     assert "request" in fetch_called
     passed_df = engine.run.call_args[0][0]
+    assert engine.run.call_args.kwargs["timeframe"] == "1m"
     assert isinstance(passed_df, pd.DataFrame)
     assert passed_df.index.is_monotonic_increasing
     assert passed_df.index.equals(df.index)
