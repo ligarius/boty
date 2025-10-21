@@ -15,7 +15,7 @@ def generate_daily_report() -> Dict[str, object]:
     end = datetime.utcnow()
     start = end - timedelta(days=1)
     data = generate_synthetic_data(OHLCVRequest("BTCUSDT", "1m", start, end))
-    metrics = engine.run(data)
+    metrics = engine.run(data, timeframe="1m")
     chart_csv = data[["close"]].reset_index().rename(columns={"index": "timestamp"}).to_csv(index=False)
     return {
         "symbol": "BTCUSDT",

@@ -21,7 +21,7 @@ def evaluate_guard(window_days: int = 30) -> Dict[str, object]:
     end = datetime.utcnow()
     start = end - timedelta(days=window_days)
     data = generate_synthetic_data(OHLCVRequest("BTCUSDT", "1m", start, end))
-    metrics = engine.run(data)
+    metrics = engine.run(data, timeframe="1m")
     ready = engine.meets_go_live(metrics)
     return {
         "mode": settings.mode,

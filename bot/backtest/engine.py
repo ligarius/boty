@@ -66,6 +66,7 @@ class BacktestEngine:
         data: pd.DataFrame,
         momentum_df: pd.DataFrame,
         mean_df: pd.DataFrame,
+        timeframe: str,
     ) -> Tuple[pd.DataFrame, pd.Series, pd.DataFrame, List[Signal]]:
         future_returns = data["close"].pct_change(periods=self.selector_horizon).shift(-self.selector_horizon)
         feature_sets: List[Dict[str, float]] = []
@@ -73,7 +74,8 @@ class BacktestEngine:
         metadata_rows: List[Dict[str, object]] = []
 
         symbol = self.settings.universe[0] if getattr(self.settings, "universe", None) else "UNKNOWN"
-        timeframe = self.settings.timeframes[0] if getattr(self.settings, "timeframes", None) else "UNKNOWN"
+
+        resolved_timeframe = timeframe or "UNKNOWN"
 
         strategies: List[Tuple[str, pd.DataFrame, float]] = [
             ("momentum", momentum_df, 0.0),
@@ -137,7 +139,7 @@ class BacktestEngine:
             signals_objects.append(
                 Signal(
                     symbol=symbol,
-                    timeframe=timeframe,
+                    timeframe=resolved_timeframe,
                     signal=int(meta["signal"]),
                     score=float(meta["score"]),
                     atr=atr_value,
@@ -198,11 +200,42 @@ class BacktestEngine:
         report: SelectorReport | None = reports[-1] if reports else None
         return report, probabilities
 
-    def run(self, data: pd.DataFrame) -> BacktestMetrics:
+    def _resolve_timeframe(self, data: pd.DataFrame, timeframe: str | None) -> str:
+        if timeframe:
+            return timeframe
+        attr_timeframe = None
+        if hasattr(data, "attrs"):
+            attr_timeframe = data.attrs.get("timeframe")
+        if isinstance(attr_timeframe, str) and attr_timeframe:
+            return attr_timeframe
+
+        index = getattr(data, "index", None)
+        freq: str | None = None
+        if index is not None:
+            freq = getattr(index, "freqstr", None)
+            if not freq:
+                freq = getattr(index, "inferred_freq", None)
+        if isinstance(freq, str) and freq:
+            return freq
+
+        timeframes = getattr(self.settings, "timeframes", None)
+        if isinstance(timeframes, list) and timeframes:
+            first = timeframes[0]
+            if isinstance(first, str) and first:
+                return first
+        return "UNKNOWN"
+
+    def run(self, data: pd.DataFrame, timeframe: str | None = None) -> BacktestMetrics:
+        resolved_timeframe = self._resolve_timeframe(data, timeframe)
         momentum_df = momentum.momentum_signals(data).reindex(data.index)
         mean_df = mean_reversion.mean_reversion_signals(data).reindex(data.index)
 
-        features, labels, signal_metadata, signals = self._build_training_samples(data, momentum_df, mean_df)
+        features, labels, signal_metadata, signals = self._build_training_samples(
+            data,
+            momentum_df,
+            mean_df,
+            resolved_timeframe,
+        )
         report, probabilities = self._train_selector(features, labels, signal_metadata)
         self.last_training_report = report
         self.last_signals = signals
