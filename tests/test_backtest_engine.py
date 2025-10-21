@@ -326,7 +326,11 @@ def test_backtest_engine_last_signals_preserve_timeframe(monkeypatch: pytest.Mon
     )
 
     engine = BacktestEngine()
-    engine.run(data, timeframe="15m")
+    assert engine.settings.timeframes, "Expected default timeframes"
+    non_default_timeframe = "45m"
+    assert non_default_timeframe not in {engine.settings.timeframes[0]}, "Test requires a non-default timeframe"
+
+    engine.run(data, timeframe=non_default_timeframe)
 
     assert engine.last_signals, "Expected at least one generated signal"
-    assert all(signal.timeframe == "15m" for signal in engine.last_signals)
+    assert all(signal.timeframe == non_default_timeframe for signal in engine.last_signals)
