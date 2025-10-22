@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -16,6 +16,7 @@ from ..core.risk import RiskManager
 from ..ml.selector import SelectorReport, SignalSelector
 from ..strategies import mean_reversion, momentum
 from ..strategies.ensemble import Signal
+from sklearn.metrics import f1_score
 
 
 @dataclass
@@ -40,6 +41,14 @@ class BacktestMetrics:
         }
 
 
+@dataclass
+class _SelectorOptimizationResult:
+    window: int
+    threshold: float
+    probabilities: pd.Series
+    reports: List[SelectorReport]
+
+
 class BacktestEngine:
     """Run walk-forward backtests and compute metrics."""
 
@@ -49,6 +58,7 @@ class BacktestEngine:
         self.selector_threshold = self.settings.selector_threshold
         self.selector_horizon = self.settings.selector_horizon
         self.selector_window = self.settings.selector_window
+        self.selector_auto_optimize = getattr(self.settings, "selector_auto_optimize", False)
         self.last_training_report: SelectorReport | None = None
         self.last_signal_probabilities: pd.DataFrame | None = None
         self.last_weighted_scores: pd.Series | None = None
@@ -149,6 +159,119 @@ class BacktestEngine:
 
         return features_df, labels_series, metadata_df, signals_objects
 
+    def _walk_forward_probabilities(
+        self,
+        sorted_features: pd.DataFrame,
+        sorted_labels: pd.Series,
+        window_size: int,
+    ) -> Tuple[pd.Series, List[SelectorReport]]:
+        probabilities = pd.Series(np.nan, index=sorted_features.index, dtype=float)
+        reports: List[SelectorReport] = []
+
+        for start in range(0, len(sorted_features), window_size):
+            end = min(start + window_size, len(sorted_features))
+            window_indices = sorted_features.index[start:end]
+            train_indices = sorted_features.index[:start]
+            if len(train_indices) < 2 or sorted_labels.loc[train_indices].nunique() < 2:
+                probabilities.loc[window_indices] = 1.0
+                continue
+
+            selector = SignalSelector(model_path=None)
+            report = selector.fit_ordered(
+                sorted_features.loc[train_indices],
+                sorted_labels.loc[train_indices],
+            )
+            reports.append(report)
+            window_probas = selector.predict_proba(sorted_features.loc[window_indices])
+            probabilities.loc[window_indices] = window_probas
+
+        probabilities = probabilities.fillna(1.0)
+        return probabilities, reports
+
+    def _auto_optimize_selector_params(
+        self,
+        sorted_features: pd.DataFrame,
+        sorted_labels: pd.Series,
+        base_window: int,
+    ) -> Optional[_SelectorOptimizationResult]:
+        if not self.selector_auto_optimize:
+            return None
+        if len(sorted_features) < 5 or sorted_labels.nunique() < 2:
+            return None
+
+        max_window = max(1, len(sorted_features))
+        base_window = min(max_window, max(1, base_window))
+
+        candidate_windows = {
+            base_window,
+            max(1, min(max_window, base_window // 2)),
+            max(1, min(max_window, int(base_window * 1.5))),
+            max(1, min(max_window, int(len(sorted_features) * 0.25))),
+            max(1, min(max_window, int(len(sorted_features) * 0.5))),
+        }
+        candidate_windows = {w for w in candidate_windows if w >= 1}
+        if not candidate_windows:
+            candidate_windows = {base_window}
+
+        base_threshold = float(self.selector_threshold)
+        threshold_grid = [round(x, 4) for x in np.linspace(0.02, 0.5, 10)]
+        threshold_candidates = {base_threshold, *threshold_grid}
+        threshold_candidates = {th for th in threshold_candidates if 0.0 <= th <= 1.0}
+
+        probability_cache: Dict[int, Tuple[pd.Series, List[SelectorReport]]] = {}
+
+        def compute(window: int) -> Tuple[pd.Series, List[SelectorReport]]:
+            window = max(1, min(max_window, window))
+            if window not in probability_cache:
+                probability_cache[window] = self._walk_forward_probabilities(
+                    sorted_features, sorted_labels, window
+                )
+            return probability_cache[window]
+
+        baseline_probs, baseline_reports = compute(base_window)
+        baseline_pred = (baseline_probs >= base_threshold).astype(int)
+        baseline_f1 = float(
+            f1_score(sorted_labels.values, baseline_pred.values, zero_division=0)
+        )
+        baseline_acc = float((baseline_pred.values == sorted_labels.values).mean())
+
+        best_result = _SelectorOptimizationResult(
+            window=base_window,
+            threshold=base_threshold,
+            probabilities=baseline_probs,
+            reports=baseline_reports,
+        )
+        best_f1 = baseline_f1
+        best_acc = baseline_acc
+
+        for window in sorted(candidate_windows):
+            probs, reports = compute(window)
+            if probs.empty:
+                continue
+            for threshold in threshold_candidates:
+                pred = (probs >= threshold).astype(int)
+                f1_val = float(
+                    f1_score(sorted_labels.values, pred.values, zero_division=0)
+                )
+                acc_val = float((pred.values == sorted_labels.values).mean())
+                if f1_val > best_f1 + 1e-6 or (
+                    abs(f1_val - best_f1) <= 1e-6 and acc_val > best_acc + 1e-6
+                ):
+                    best_f1 = f1_val
+                    best_acc = acc_val
+                    best_result = _SelectorOptimizationResult(
+                        window=window,
+                        threshold=threshold,
+                        probabilities=probs,
+                        reports=reports,
+                    )
+
+        if best_result.window != base_window or abs(best_result.threshold - base_threshold) > 1e-6:
+            self.selector_window = best_result.window
+            self.selector_threshold = best_result.threshold
+
+        return best_result
+
     def _train_selector(
         self, features: pd.DataFrame, labels: pd.Series, metadata: pd.DataFrame
     ) -> Tuple[SelectorReport | None, pd.Series]:
@@ -174,28 +297,20 @@ class BacktestEngine:
         sorted_labels = labels.loc[ordered_indices]
 
         window_size = max(int(self.selector_window), 1)
-        probabilities = pd.Series(np.nan, index=sorted_features.index, dtype=float)
-        reports: List[SelectorReport] = []
+        optimization = self._auto_optimize_selector_params(
+            sorted_features, sorted_labels, window_size
+        )
 
-        for start in range(0, len(sorted_features), window_size):
-            end = min(start + window_size, len(sorted_features))
-            window_indices = sorted_features.index[start:end]
-            train_indices = sorted_features.index[:start]
-            if len(train_indices) < 2 or sorted_labels.loc[train_indices].nunique() < 2:
-                probabilities.loc[window_indices] = 1.0
-                continue
-
-            selector = SignalSelector(model_path=None)
-            report = selector.fit_ordered(
-                sorted_features.loc[train_indices],
-                sorted_labels.loc[train_indices],
+        if optimization is not None:
+            window_size = optimization.window
+            probabilities = optimization.probabilities.copy()
+            reports = optimization.reports
+        else:
+            probabilities, reports = self._walk_forward_probabilities(
+                sorted_features, sorted_labels, window_size
             )
-            reports.append(report)
-            window_probas = selector.predict_proba(sorted_features.loc[window_indices])
-            probabilities.loc[window_indices] = window_probas
 
-        probabilities = probabilities.fillna(1.0)
-        probabilities = probabilities.reindex(features.index)
+        probabilities = probabilities.reindex(features.index).fillna(1.0)
 
         report: SelectorReport | None = reports[-1] if reports else None
         return report, probabilities
