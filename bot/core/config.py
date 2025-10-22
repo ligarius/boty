@@ -73,6 +73,10 @@ class Settings(BaseSettings):
         le=2000,
         description="Rolling window size (in samples) for walk-forward selector training.",
     )
+    selector_auto_optimize: bool = Field(
+        True,
+        description="Automatically tune selector window and threshold using walk-forward CV.",
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",
