@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -57,3 +57,75 @@ def test_auto_tune_cli_prints_summary(monkeypatch: pytest.MonkeyPatch, capsys: p
     assert "Auto-tune summary" in captured.out
     assert "Best parameters" in captured.out
     assert "Optimized metrics" in captured.out
+
+
+def test_auto_tune_cli_accepts_z_datetime(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    _ensure_vectorbt_fallback(monkeypatch)
+
+    start = datetime(2023, 4, 1, tzinfo=timezone.utc)
+    end = start + timedelta(hours=1)
+
+    start_str = start.isoformat().replace("+00:00", "Z")
+    end_str = end.isoformat().replace("+00:00", "Z")
+
+    auto_tune_cli.main(
+        [
+            "BTCUSDT",
+            "1m",
+            start_str,
+            end_str,
+            "--data-source",
+            "synthetic",
+            "--trials",
+            "1",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert "Auto-tune summary" in captured.out
+    assert "Best parameters" in captured.out
+    assert "Optimized metrics" in captured.out
+
+
+def test_tune_intraday_settings_accepts_z_strings(monkeypatch: pytest.MonkeyPatch) -> None:
+    _ensure_vectorbt_fallback(monkeypatch)
+
+    start = datetime(2023, 5, 1, tzinfo=timezone.utc)
+    end = start + timedelta(hours=2)
+
+    start_str = start.isoformat().replace("+00:00", "Z")
+    end_str = end.isoformat().replace("+00:00", "Z")
+
+    result = tune_intraday_settings(
+        "ETHUSDT",
+        "5m",
+        start_str,
+        end_str,
+        data_source="synthetic",
+        n_trials=1,
+    )
+
+    assert isinstance(result, AutoTuneResult)
+    assert result.metrics
+    assert "roi" in result.metrics
+    assert result.baseline_metrics
+
+
+def test_tune_intraday_settings_accepts_aware_datetimes(monkeypatch: pytest.MonkeyPatch) -> None:
+    _ensure_vectorbt_fallback(monkeypatch)
+
+    start = datetime(2023, 6, 1, tzinfo=timezone.utc)
+    end = start + timedelta(hours=3)
+
+    result = tune_intraday_settings(
+        "BTCUSDT",
+        "1m",
+        start,
+        end,
+        data_source="synthetic",
+        n_trials=1,
+    )
+
+    assert isinstance(result, AutoTuneResult)
+    assert result.metrics
+    assert result.baseline_metrics
