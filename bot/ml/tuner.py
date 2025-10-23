@@ -25,8 +25,15 @@ class EvolutionaryTuner:
         best_trial = self.study.best_trial
         metrics = {"value": best_trial.value}
         metrics.update(best_trial.user_attrs)
+        resolved_params = best_trial.user_attrs.get("resolved_params")
+        if resolved_params is None:
+            resolved_params = dict(best_trial.params)
         is_promoted = best_trial.value >= best_trial.user_attrs.get("baseline", 0.0)
-        return CandidateResult(params=best_trial.params, metrics=metrics, is_promoted=is_promoted)
+        return CandidateResult(
+            params=resolved_params,
+            metrics=metrics,
+            is_promoted=is_promoted,
+        )
 
     def suggest_params(self, trial: optuna.Trial) -> Dict[str, float]:
         fast = trial.suggest_int("fast", 5, 21)
