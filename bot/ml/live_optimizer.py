@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -37,11 +37,19 @@ class AutoTuneResult:
 
 def _ensure_datetime(value: datetime | str, field: str) -> datetime:
     if isinstance(value, datetime):
-        return value
-    try:
-        return datetime.fromisoformat(value)
-    except ValueError as exc:  # pragma: no cover - defensive
-        raise ValueError(f"invalid {field} datetime") from exc
+        dt = value
+    else:
+        candidate = value
+        if isinstance(value, str) and value.endswith("Z"):
+            candidate = value[:-1] + "+00:00"
+        try:
+            dt = datetime.fromisoformat(candidate)
+        except ValueError as exc:  # pragma: no cover - defensive
+            raise ValueError(f"invalid {field} datetime") from exc
+
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
 
 
 def _composite_score(metrics: BacktestMetrics) -> float:
