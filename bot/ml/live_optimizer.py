@@ -186,6 +186,20 @@ def tune_intraday_settings(
             engine.last_training_report.to_dict() if engine.last_training_report is not None else None
         )
 
+        resolved_selector_window = engine.last_resolved_selector_window
+        if resolved_selector_window is None:
+            resolved_selector_window = int(engine.selector_window)
+
+        resolved_selector_threshold = engine.last_resolved_selector_threshold
+        if resolved_selector_threshold is None:
+            resolved_selector_threshold = float(engine.selector_threshold)
+
+        resolved_params = {
+            **trial.params,
+            "selector_window": int(resolved_selector_window),
+            "selector_threshold": float(resolved_selector_threshold),
+        }
+
         trial.set_user_attr(
             "metrics",
             {
@@ -197,6 +211,7 @@ def tune_intraday_settings(
         trial.set_user_attr("training", training_report)
         trial.set_user_attr("baseline", baseline_score)
         trial.set_user_attr("go_live_ready", engine.meets_go_live(metrics))
+        trial.set_user_attr("resolved_params", resolved_params)
 
         return score
 

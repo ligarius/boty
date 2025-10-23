@@ -64,6 +64,8 @@ class BacktestEngine:
         self.last_weighted_scores: pd.Series | None = None
         self.last_weighted_scores_raw: pd.Series | None = None
         self.last_signals: List[Signal] = []
+        self.last_resolved_selector_window: int | None = None
+        self.last_resolved_selector_threshold: float | None = None
 
     @staticmethod
     def _sanitize(value: float) -> float:
@@ -274,12 +276,15 @@ class BacktestEngine:
 
     def _train_selector(
         self, features: pd.DataFrame, labels: pd.Series, metadata: pd.DataFrame
-    ) -> Tuple[SelectorReport | None, pd.Series]:
+    ) -> Tuple[SelectorReport | None, pd.Series, int, float]:
+        final_window = max(int(self.selector_window), 1)
+        final_threshold = float(self.selector_threshold)
+
         if features.empty or len(features) < 2 or labels.nunique() < 2:
             if features.empty:
-                return None, pd.Series(dtype=float)
+                return None, pd.Series(dtype=float), final_window, final_threshold
             baseline = pd.Series(np.ones(len(features)), index=features.index, dtype=float)
-            return None, baseline
+            return None, baseline, final_window, final_threshold
 
         if "timestamp" not in metadata.columns:
             raise ValueError("metadata must contain a 'timestamp' column for walk-forward training")
@@ -296,7 +301,7 @@ class BacktestEngine:
         sorted_features = features.loc[ordered_indices]
         sorted_labels = labels.loc[ordered_indices]
 
-        window_size = max(int(self.selector_window), 1)
+        window_size = final_window
         optimization = self._auto_optimize_selector_params(
             sorted_features, sorted_labels, window_size
         )
@@ -305,6 +310,8 @@ class BacktestEngine:
             window_size = optimization.window
             probabilities = optimization.probabilities.copy()
             reports = optimization.reports
+            final_window = int(optimization.window)
+            final_threshold = float(optimization.threshold)
         else:
             probabilities, reports = self._walk_forward_probabilities(
                 sorted_features, sorted_labels, window_size
@@ -313,7 +320,9 @@ class BacktestEngine:
         probabilities = probabilities.reindex(features.index).fillna(1.0)
 
         report: SelectorReport | None = reports[-1] if reports else None
-        return report, probabilities
+        final_threshold = float(self.selector_threshold)
+        final_window = int(max(1, window_size)) if optimization is None else final_window
+        return report, probabilities, final_window, final_threshold
 
     def _resolve_timeframe(self, data: pd.DataFrame, timeframe: str | None) -> str:
         if timeframe:
@@ -361,9 +370,16 @@ class BacktestEngine:
             mean_df,
             effective_timeframe,
         )
-        report, probabilities = self._train_selector(features, labels, signal_metadata)
+        (
+            report,
+            probabilities,
+            resolved_selector_window,
+            resolved_selector_threshold,
+        ) = self._train_selector(features, labels, signal_metadata)
         self.last_training_report = report
         self.last_signals = signals
+        self.last_resolved_selector_window = int(resolved_selector_window)
+        self.last_resolved_selector_threshold = float(resolved_selector_threshold)
 
         probability_table = signal_metadata.sort_values("timestamp").copy()
         if probability_table.empty:
@@ -391,7 +407,7 @@ class BacktestEngine:
         else:
             normalized_weighted_scores = raw_weighted_scores.copy()
 
-        threshold = float(self.selector_threshold)
+        threshold = float(resolved_selector_threshold)
         final_signal = pd.Series(0, index=data.index, dtype=int)
         final_signal.loc[normalized_weighted_scores > threshold] = 1
         final_signal.loc[normalized_weighted_scores < -threshold] = -1
