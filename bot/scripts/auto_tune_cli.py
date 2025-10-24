@@ -31,7 +31,7 @@ def _display(result: AutoTuneResult) -> None:
     print(f"  Composite score: {result.best_score:.4f} (baseline {result.baseline_score:.4f})")
     print(f"  Go-live ready: {result.go_live_ready}")
 
-    print("Applied parameters")
+    print("Applied parameters (resolved)")
     sorted_params = sorted(result.best_params.items())
     print(_pretty_dict(sorted_params))
 
