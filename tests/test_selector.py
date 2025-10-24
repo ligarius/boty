@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -37,6 +38,10 @@ def test_signal_selector_scores_using_pipeline(tmp_path):
     ]
 
     expected_probabilities = reloaded_selector.pipeline.predict_proba(features)[:, 1]
+    threshold = float(reloaded_selector.decision_threshold)
+    expected_probabilities = np.where(
+        expected_probabilities >= threshold, expected_probabilities, 0.0
+    )
     scored_signals = reloaded_selector.score_signals(signals)
 
     scored_by_symbol = {sig.symbol: sig for sig in scored_signals}

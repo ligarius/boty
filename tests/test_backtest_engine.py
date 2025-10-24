@@ -140,7 +140,15 @@ def test_backtest_engine_trains_and_weights(monkeypatch: pytest.MonkeyPatch) -> 
         trend_values = features["trend"].astype(float)
         assert np.any(np.abs(trend_values.to_numpy()) > 0), "Trend feature should carry directional information"
         feature_weights = {feature: float(idx + 1) for idx, feature in enumerate(features.columns)}
-        return SelectorReport(accuracy=0.75, f1=0.6, feature_importances=feature_weights)
+        self.decision_threshold = 0.6
+        return SelectorReport(
+            accuracy=0.75,
+            f1=0.6,
+            precision=0.55,
+            recall=0.5,
+            threshold=0.6,
+            feature_importances=feature_weights,
+        )
 
     def fake_predict_proba(self: SignalSelector, features: pd.DataFrame) -> np.ndarray:
         assert fit_calls > 0
@@ -175,6 +183,9 @@ def test_backtest_engine_trains_and_weights(monkeypatch: pytest.MonkeyPatch) -> 
     assert engine.last_training_report is not None
     assert metrics.training_accuracy == pytest.approx(0.75)
     assert metrics.training_f1 == pytest.approx(0.6)
+    assert metrics.training_precision == pytest.approx(0.55)
+    assert metrics.training_recall == pytest.approx(0.5)
+    assert metrics.selector_threshold == pytest.approx(0.6)
     assert metrics.training_accuracy > 0.5
 
     probabilities = engine.last_signal_probabilities
