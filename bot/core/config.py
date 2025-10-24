@@ -47,6 +47,18 @@ class Settings(BaseSettings):
     risk_pct: float = Field(0.01, ge=0.001, le=0.05)
     max_dd_daily: float = Field(0.03, ge=0.0, le=0.5)
     max_dd_weekly: float = Field(0.08, ge=0.0, le=0.5)
+    daily_loss_limit_pct: float = Field(
+        0.05,
+        ge=0.0,
+        le=0.5,
+        description="Maximum allowed equity loss in a single day before trading pauses.",
+    )
+    max_consecutive_losses: int = Field(
+        3,
+        ge=1,
+        le=10,
+        description="Number of consecutive losing trades allowed before triggering a circuit breaker.",
+    )
     top_n_signals: int = Field(3, ge=1, le=10)
     universe: List[str] = Field(default_factory=lambda: ["BTCUSDT", "ETHUSDT", "BNBUSDT"])
     timeframes: List[str] = Field(default_factory=lambda: ["1m", "5m", "15m"])
@@ -76,6 +88,42 @@ class Settings(BaseSettings):
     selector_auto_optimize: bool = Field(
         True,
         description="Automatically tune selector window and threshold using walk-forward CV.",
+    )
+    auto_tune_min_roi: float = Field(
+        0.0,
+        ge=-1.0,
+        le=1.0,
+        description="Minimum ROI required for an auto-tuned configuration to be promoted.",
+    )
+    auto_tune_min_profit_factor: float = Field(
+        1.0,
+        ge=0.0,
+        le=5.0,
+        description="Minimum profit factor required for an auto-tuned configuration to be promoted.",
+    )
+    auto_tune_max_drawdown: float = Field(
+        0.35,
+        ge=0.0,
+        le=1.0,
+        description="Maximum drawdown tolerated for an auto-tuned configuration.",
+    )
+    performance_lookback_days: int = Field(
+        14,
+        ge=1,
+        le=90,
+        description="Rolling window (in days) used to evaluate recent strategy performance.",
+    )
+    ensemble_decay: float = Field(
+        0.9,
+        ge=0.0,
+        le=1.0,
+        description="Decay factor applied when updating ensemble performance weights.",
+    )
+    alert_drawdown_threshold: float = Field(
+        0.2,
+        ge=0.0,
+        le=1.0,
+        description="Drawdown level that triggers an alert in the monitoring pipeline.",
     )
 
     model_config = SettingsConfigDict(

@@ -30,6 +30,7 @@ def _display(result: AutoTuneResult) -> None:
     print(f"  Study: {result.study_name} (trials={result.trials})")
     print(f"  Composite score: {result.best_score:.4f} (baseline {result.baseline_score:.4f})")
     print(f"  Go-live ready: {result.go_live_ready}")
+    print(f"  Passes thresholds: {result.passes_thresholds}")
 
     print("Applied parameters (resolved)")
     sorted_params = sorted(result.best_params.items())

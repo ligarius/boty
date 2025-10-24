@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Dict, Iterable, List, Sequence
 
 from sqlalchemy import (
+    JSON,
     Column,
     DateTime,
     Float,
@@ -48,6 +49,23 @@ trades_table = Table(
     Column("pnl", Float, nullable=True),
     Column("opened_at", DateTime, default=datetime.utcnow, nullable=False),
     Column("closed_at", DateTime, nullable=True),
+)
+
+tuning_runs_table = Table(
+    "tuning_runs",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("study_name", String(100), nullable=False),
+    Column("symbol", String(20), nullable=False),
+    Column("timeframe", String(10), nullable=False),
+    Column("start", DateTime, nullable=False),
+    Column("end", DateTime, nullable=False),
+    Column("best_score", Float, nullable=False),
+    Column("go_live_ready", Integer, nullable=False),
+    Column("passes_thresholds", Integer, nullable=False),
+    Column("metrics", JSON, nullable=True),
+    Column("params", JSON, nullable=True),
+    Column("created_at", DateTime, default=datetime.utcnow, nullable=False),
 )
 
 
@@ -107,6 +125,36 @@ class Repository:
                     }
                 ],
             )
+
+    def record_tuning_run(
+        self,
+        *,
+        study_name: str,
+        symbol: str,
+        timeframe: str,
+        start: datetime,
+        end: datetime,
+        best_score: float,
+        go_live_ready: bool,
+        passes_thresholds: bool,
+        metrics: Dict[str, float],
+        params: Dict[str, float],
+    ) -> None:
+        payload = {
+            "study_name": study_name,
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "start": start,
+            "end": end,
+            "best_score": best_score,
+            "go_live_ready": 1 if go_live_ready else 0,
+            "passes_thresholds": 1 if passes_thresholds else 0,
+            "metrics": metrics,
+            "params": params,
+            "created_at": datetime.utcnow(),
+        }
+        with self._connection() as conn:
+            conn.execute(insert(tuning_runs_table), [payload])
 
     # ------------------------------------------------------------------
     # Reporting helpers

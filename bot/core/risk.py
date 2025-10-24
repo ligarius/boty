@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 from typing import Optional
 
 import numpy as np
@@ -27,9 +28,15 @@ class RiskManager:
         self.settings = settings
         self.daily_start_equity: Optional[float] = None
         self.weekly_start_equity: Optional[float] = None
+        self._current_day: Optional[date] = None
+        self._daily_pnl: float = 0.0
+        self._consecutive_losses: int = 0
 
     def reset_daily(self, equity: float) -> None:
         self.daily_start_equity = equity
+        self._current_day = date.today()
+        self._daily_pnl = 0.0
+        self._consecutive_losses = 0
 
     def reset_weekly(self, equity: float) -> None:
         self.weekly_start_equity = equity
@@ -45,6 +52,39 @@ class RiskManager:
         daily_dd = 1 - equity / max(self.daily_start_equity, 1e-8)
         weekly_dd = 1 - equity / max(self.weekly_start_equity, 1e-8)
         return daily_dd <= self.settings.max_dd_daily and weekly_dd <= self.settings.max_dd_weekly
+
+    def register_trade(self, pnl: float) -> None:
+        """Update internal counters based on trade PnL."""
+
+        today = date.today()
+        if self._current_day != today:
+            self._current_day = today
+            self._daily_pnl = 0.0
+            self._consecutive_losses = 0
+
+        self._daily_pnl += pnl
+        if pnl < 0:
+            self._consecutive_losses += 1
+        else:
+            self._consecutive_losses = 0
+
+    def should_pause_trading(self, equity: float) -> bool:
+        """Return True if trading should pause due to risk breaches."""
+
+        if not self.check_drawdown(equity):
+            return True
+
+        start_equity = self.daily_start_equity or equity
+        if start_equity <= 0:
+            return False
+        daily_loss_limit = start_equity * self.settings.daily_loss_limit_pct
+        if self._daily_pnl < -abs(daily_loss_limit):
+            return True
+
+        if self._consecutive_losses >= self.settings.max_consecutive_losses:
+            return True
+
+        return False
 
     def compute_position_size(
         self,
