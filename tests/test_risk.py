@@ -40,3 +40,22 @@ def test_drawdown_limits():
     risk.reset_weekly(10000)
     assert risk.check_drawdown(9800)
     assert not risk.check_drawdown(9000)
+
+
+def test_daily_loss_limit_triggers_pause():
+    settings = Settings(daily_loss_limit_pct=0.02, max_consecutive_losses=3)
+    risk = RiskManager(settings)
+    risk.reset_daily(10000)
+    risk.register_trade(-150)
+    risk.register_trade(-100)
+    assert risk.should_pause_trading(9800)
+
+
+def test_consecutive_losses_trigger_pause():
+    settings = Settings(max_consecutive_losses=2)
+    risk = RiskManager(settings)
+    risk.reset_daily(10000)
+    risk.register_trade(-10)
+    assert not risk.should_pause_trading(9950)
+    risk.register_trade(-10)
+    assert risk.should_pause_trading(9900)

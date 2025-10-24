@@ -14,7 +14,7 @@ except ImportError:  # pragma: no cover - fallback for environments without vect
 from ..core.config import get_settings
 from ..core.risk import RiskManager
 from ..ml.selector import SelectorReport, SignalSelector
-from ..strategies import mean_reversion, momentum
+from ..strategies import mean_reversion, momentum, volatility_breakout, market_making
 from ..strategies.ensemble import Signal
 from sklearn.metrics import f1_score
 
@@ -78,6 +78,8 @@ class BacktestEngine:
         data: pd.DataFrame,
         momentum_df: pd.DataFrame,
         mean_df: pd.DataFrame,
+        breakout_df: pd.DataFrame,
+        mm_df: pd.DataFrame,
         effective_timeframe: str,
     ) -> Tuple[pd.DataFrame, pd.Series, pd.DataFrame, List[Signal]]:
         future_returns = data["close"].pct_change(periods=self.selector_horizon).shift(-self.selector_horizon)
@@ -92,6 +94,8 @@ class BacktestEngine:
         strategies: List[Tuple[str, pd.DataFrame, float]] = [
             ("momentum", momentum_df, 0.0),
             ("mean_reversion", mean_df, 1.0),
+            ("volatility_breakout", breakout_df, 2.0),
+            ("market_making", mm_df, 3.0),
         ]
 
         for name, df, strategy_id in strategies:
@@ -128,6 +132,7 @@ class BacktestEngine:
                         "score": score_val,
                         "atr": atr_val,
                         "source": name,
+                        "strategy": name,
                     }
                 )
 
@@ -156,6 +161,7 @@ class BacktestEngine:
                     score=float(meta["score"]),
                     atr=atr_value,
                     features=feature_dict,
+                    strategy=str(meta.get("strategy")) if "strategy" in meta else None,
                 )
             )
 
@@ -359,18 +365,28 @@ class BacktestEngine:
         *,
         momentum_params: Dict[str, float] | None = None,
         mean_reversion_params: Dict[str, float] | None = None,
+        volatility_params: Dict[str, float] | None = None,
+        market_making_params: Dict[str, float] | None = None,
     ) -> BacktestMetrics:
         effective_timeframe = self._resolve_timeframe(data, timeframe)
         momentum_params = momentum_params or {}
         mean_reversion_params = mean_reversion_params or {}
+        volatility_params = volatility_params or {}
+        market_making_params = market_making_params or {}
 
         momentum_df = momentum.momentum_signals(data, **momentum_params).reindex(data.index)
         mean_df = mean_reversion.mean_reversion_signals(data, **mean_reversion_params).reindex(data.index)
+        breakout_df = volatility_breakout.volatility_breakout_signals(data, **volatility_params).reindex(
+            data.index
+        )
+        mm_df = market_making.market_making_signals(data, **market_making_params).reindex(data.index)
 
         features, labels, signal_metadata, signals = self._build_training_samples(
             data,
             momentum_df,
             mean_df,
+            breakout_df,
+            mm_df,
             effective_timeframe,
         )
         (

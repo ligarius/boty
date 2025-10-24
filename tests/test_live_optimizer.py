@@ -30,6 +30,7 @@ def _stub_result() -> AutoTuneResult:
         metrics={"roi": 0.05, "sharpe": 0.5},
         training={"accuracy": 0.7},
         go_live_ready=True,
+        passes_thresholds=True,
         baseline_metrics={"roi": 0.01},
         baseline_training=None,
     )
@@ -89,7 +90,7 @@ def test_tune_intraday_settings_returns_result(monkeypatch: pytest.MonkeyPatch) 
             "go_live_ready": True,
             "baseline": 0.9,
         }
-        return CandidateResult(params=params, metrics=metrics, is_promoted=True)
+        return CandidateResult(params=params, metrics=metrics, is_promoted=True, passes_thresholds=True)
 
     monkeypatch.setattr(
         "bot.ml.live_optimizer.EvolutionaryTuner.optimize",
@@ -145,6 +146,7 @@ def test_auto_tune_cli_prints_summary(monkeypatch: pytest.MonkeyPatch, capsys: p
     assert "Auto-tune summary" in captured.out
     assert "Applied parameters (resolved)" in captured.out
     assert "Optimized metrics" in captured.out
+    assert "Passes thresholds" in captured.out
 
     for key, value in sorted(result.best_params.items()):
         if isinstance(value, (int, float)):
@@ -189,6 +191,7 @@ def test_auto_tune_cli_accepts_z_datetime(monkeypatch: pytest.MonkeyPatch, capsy
     assert "Auto-tune summary" in captured.out
     assert "Applied parameters (resolved)" in captured.out
     assert "Optimized metrics" in captured.out
+    assert "Passes thresholds" in captured.out
 
 
 def test_tune_intraday_settings_accepts_z_strings(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -255,7 +258,7 @@ def test_tune_intraday_settings_accepts_z_strings(monkeypatch: pytest.MonkeyPatc
             "go_live_ready": False,
             "baseline": 0.5,
         }
-        return CandidateResult(params=params, metrics=metrics, is_promoted=False)
+        return CandidateResult(params=params, metrics=metrics, is_promoted=False, passes_thresholds=False)
 
     monkeypatch.setattr(
         "bot.ml.live_optimizer.EvolutionaryTuner.optimize",
@@ -331,7 +334,7 @@ def test_tune_intraday_settings_records_resolved_selector_params(
             recorded_threshold
         )
         resolved = trial.user_attrs["resolved_params"]
-        return CandidateResult(params=resolved, metrics=metrics, is_promoted=True)
+        return CandidateResult(params=resolved, metrics=metrics, is_promoted=True, passes_thresholds=True)
 
     monkeypatch.setattr(
         "bot.ml.live_optimizer.EvolutionaryTuner.optimize",
@@ -415,7 +418,7 @@ def test_tune_intraday_settings_accepts_aware_datetimes(monkeypatch: pytest.Monk
             "go_live_ready": True,
             "baseline": 0.4,
         }
-        return CandidateResult(params=params, metrics=metrics, is_promoted=True)
+        return CandidateResult(params=params, metrics=metrics, is_promoted=True, passes_thresholds=True)
 
     monkeypatch.setattr(
         "bot.ml.live_optimizer.EvolutionaryTuner.optimize",

@@ -6,21 +6,31 @@ import pandas as pd
 from pandas import DataFrame
 
 
-def momentum_signals(data: DataFrame, fast: int = 9, slow: int = 21, adx_period: int = 14) -> DataFrame:
+def momentum_signals(
+    data: DataFrame,
+    fast: int = 9,
+    slow: int = 21,
+    adx_period: int = 14,
+    adx_threshold: float = 20.0,
+    atr_period: int = 14,
+    atr_multiplier: float = 1.5,
+) -> DataFrame:
     """Generate momentum trading signals."""
 
     df = data.copy()
     df["ma_fast"] = df["close"].rolling(window=fast).mean()
     df["ma_slow"] = df["close"].rolling(window=slow).mean()
-    df["atr"] = _atr(df, period=14)
+    df["atr"] = _atr(df, period=atr_period)
     df["adx"] = _adx(df, period=adx_period)
     df["trend"] = (df["ma_fast"] > df["ma_slow"]).astype(int) - (df["ma_fast"] < df["ma_slow"]).astype(int)
-    df["signal"] = np.where(df["adx"] > 20, df["trend"], 0)
+    df["signal"] = np.where(df["adx"] > adx_threshold, df["trend"], 0)
     df["signal"] = pd.Series(df["signal"], index=df.index).fillna(0).astype(int)
-    df["score"] = df["signal"] * (1 / (df["atr"].replace(0, pd.NA)))
-    df["score"] = df["score"].fillna(0.0)
+    normalized_atr = df["atr"] / df["close"].rolling(window=max(slow, 1)).mean()
+    normalized_atr = normalized_atr.replace(0, np.nan)
+    risk_adjustment = 1 / (normalized_atr * max(atr_multiplier, 1e-6))
+    df["score"] = (df["signal"] * risk_adjustment).fillna(0.0)
 
-    result = df[["signal", "score", "atr", "adx", "trend"]].reindex(data.index)
+    result = df[["signal", "score", "atr", "adx", "trend", "ma_fast", "ma_slow"]].reindex(data.index)
     result["signal"] = result["signal"].fillna(0).astype(int)
     result["trend"] = result["trend"].fillna(0).astype(int)
     return result

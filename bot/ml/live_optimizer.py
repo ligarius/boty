@@ -31,6 +31,7 @@ class AutoTuneResult:
     metrics: Dict[str, float]
     training: Optional[Dict[str, float]]
     go_live_ready: bool
+    passes_thresholds: bool
     baseline_metrics: Dict[str, float]
     baseline_training: Optional[Dict[str, float]]
 
@@ -147,15 +148,31 @@ def tune_intraday_settings(
     )
     baseline_score = _composite_score(baseline_metrics)
 
-    tuner = EvolutionaryTuner(study_name=study_name, storage=storage)
+    tuner = EvolutionaryTuner(
+        study_name=study_name,
+        storage=storage,
+        min_roi=resolved_settings.auto_tune_min_roi,
+        min_profit_factor=resolved_settings.auto_tune_min_profit_factor,
+        max_drawdown=resolved_settings.auto_tune_max_drawdown,
+    )
 
     def objective(trial: optuna.Trial) -> float:
         momentum_fast = trial.suggest_int("momentum_fast", 5, 30)
         momentum_slow = trial.suggest_int("momentum_slow", 31, 120)
         momentum_adx = trial.suggest_int("momentum_adx_period", 7, 30)
+        momentum_adx_threshold = trial.suggest_float("momentum_adx_threshold", 15.0, 40.0)
+        momentum_atr_multiplier = trial.suggest_float("momentum_atr_multiplier", 0.5, 3.0)
 
         mean_window = trial.suggest_int("mean_window", 10, 80)
         mean_z = trial.suggest_float("mean_z_threshold", 0.8, 3.0)
+
+        breakout_lookback = trial.suggest_int("breakout_lookback", 10, 60)
+        breakout_multiplier = trial.suggest_float("breakout_multiplier", 1.0, 3.0)
+        breakout_cooldown = trial.suggest_int("breakout_cooldown", 1, 10)
+
+        market_spread = trial.suggest_float("market_spread", 0.0005, 0.003)
+        market_liquidity_window = trial.suggest_int("market_liquidity_window", 20, 120)
+        market_inventory_alpha = trial.suggest_float("market_inventory_alpha", 0.1, 0.9)
 
         selector_threshold = trial.suggest_float("selector_threshold", 0.0, 0.4)
         selector_window = trial.suggest_int("selector_window", 20, 500)
@@ -173,10 +190,22 @@ def tune_intraday_settings(
                 "fast": momentum_fast,
                 "slow": momentum_slow,
                 "adx_period": momentum_adx,
+                "adx_threshold": momentum_adx_threshold,
+                "atr_multiplier": momentum_atr_multiplier,
             },
             mean_reversion_params={
                 "window": mean_window,
                 "z_threshold": mean_z,
+            },
+            volatility_params={
+                "lookback": breakout_lookback,
+                "breakout_multiplier": breakout_multiplier,
+                "cooldown": breakout_cooldown,
+            },
+            market_making_params={
+                "spread": market_spread,
+                "liquidity_window": market_liquidity_window,
+                "inventory_alpha": market_inventory_alpha,
             },
         )
 
@@ -184,6 +213,12 @@ def tune_intraday_settings(
 
         training_report = (
             engine.last_training_report.to_dict() if engine.last_training_report is not None else None
+        )
+
+        passes_thresholds = (
+            metrics.roi >= resolved_settings.auto_tune_min_roi
+            and metrics.profit_factor >= resolved_settings.auto_tune_min_profit_factor
+            and metrics.max_drawdown <= resolved_settings.auto_tune_max_drawdown
         )
 
         resolved_selector_window = engine.last_resolved_selector_window
@@ -205,6 +240,7 @@ def tune_intraday_settings(
         trial.set_user_attr("training", training_report)
         trial.set_user_attr("baseline", baseline_score)
         trial.set_user_attr("go_live_ready", engine.meets_go_live(metrics))
+        trial.set_user_attr("passes_thresholds", passes_thresholds)
         trial.set_user_attr("resolved_selector_window", int(resolved_selector_window))
         trial.set_user_attr(
             "resolved_selector_threshold", float(resolved_selector_threshold)
@@ -221,7 +257,7 @@ def tune_intraday_settings(
 
     metrics_payload = candidate.metrics.get("metrics")
     training_payload = candidate.metrics.get("training")
-    go_live_ready = bool(candidate.metrics.get("go_live_ready", False))
+    go_live_ready = bool(candidate.metrics.get("go_live_ready", False)) and candidate.passes_thresholds
     value = float(candidate.metrics.get("value", 0.0))
 
     if metrics_payload is None:
@@ -236,6 +272,7 @@ def tune_intraday_settings(
         metrics=metrics_payload,
         training=training_payload,
         go_live_ready=go_live_ready,
+        passes_thresholds=candidate.passes_thresholds,
         baseline_metrics=baseline_metrics.to_dict(),
         baseline_training=baseline_training,
     )
