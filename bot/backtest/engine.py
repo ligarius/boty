@@ -43,10 +43,10 @@ class BacktestMetrics:
 
 @dataclass
 class _SelectorOptimizationResult:
-    window: int
-    threshold: float
     probabilities: pd.Series
     reports: List[SelectorReport]
+    resolved_window: int
+    resolved_threshold: float
 
 
 class BacktestEngine:
@@ -238,10 +238,10 @@ class BacktestEngine:
         baseline_acc = float((baseline_pred.values == sorted_labels.values).mean())
 
         best_result = _SelectorOptimizationResult(
-            window=base_window,
-            threshold=base_threshold,
             probabilities=baseline_probs,
             reports=baseline_reports,
+            resolved_window=base_window,
+            resolved_threshold=base_threshold,
         )
         best_f1 = baseline_f1
         best_acc = baseline_acc
@@ -262,15 +262,18 @@ class BacktestEngine:
                     best_f1 = f1_val
                     best_acc = acc_val
                     best_result = _SelectorOptimizationResult(
-                        window=window,
-                        threshold=threshold,
                         probabilities=probs,
                         reports=reports,
+                        resolved_window=window,
+                        resolved_threshold=threshold,
                     )
 
-        if best_result.window != base_window or abs(best_result.threshold - base_threshold) > 1e-6:
-            self.selector_window = best_result.window
-            self.selector_threshold = best_result.threshold
+        if (
+            best_result.resolved_window != base_window
+            or abs(best_result.resolved_threshold - base_threshold) > 1e-6
+        ):
+            self.selector_window = best_result.resolved_window
+            self.selector_threshold = best_result.resolved_threshold
 
         return best_result
 
@@ -307,21 +310,21 @@ class BacktestEngine:
         )
 
         if optimization is not None:
-            window_size = optimization.window
+            window_size = optimization.resolved_window
             probabilities = optimization.probabilities.copy()
             reports = optimization.reports
-            final_window = int(optimization.window)
-            final_threshold = float(optimization.threshold)
+            final_window = int(optimization.resolved_window)
+            final_threshold = float(optimization.resolved_threshold)
         else:
             probabilities, reports = self._walk_forward_probabilities(
                 sorted_features, sorted_labels, window_size
             )
+            final_window = int(max(1, window_size))
+            final_threshold = float(self.selector_threshold)
 
         probabilities = probabilities.reindex(features.index).fillna(1.0)
 
         report: SelectorReport | None = reports[-1] if reports else None
-        final_threshold = float(self.selector_threshold)
-        final_window = int(max(1, window_size)) if optimization is None else final_window
         return report, probabilities, final_window, final_threshold
 
     def _resolve_timeframe(self, data: pd.DataFrame, timeframe: str | None) -> str:

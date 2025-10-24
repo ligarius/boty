@@ -25,9 +25,17 @@ class EvolutionaryTuner:
         best_trial = self.study.best_trial
         metrics = {"value": best_trial.value}
         metrics.update(best_trial.user_attrs)
-        resolved_params = best_trial.user_attrs.get("resolved_params")
-        if resolved_params is None:
+        resolved_params = dict(best_trial.user_attrs.get("resolved_params", {}))
+        if not resolved_params:
             resolved_params = dict(best_trial.params)
+
+        resolved_window = best_trial.user_attrs.get("resolved_selector_window")
+        if resolved_window is not None:
+            resolved_params["selector_window"] = int(resolved_window)
+
+        resolved_threshold = best_trial.user_attrs.get("resolved_selector_threshold")
+        if resolved_threshold is not None:
+            resolved_params["selector_threshold"] = float(resolved_threshold)
         is_promoted = best_trial.value >= best_trial.user_attrs.get("baseline", 0.0)
         return CandidateResult(
             params=resolved_params,

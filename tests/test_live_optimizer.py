@@ -143,7 +143,7 @@ def test_auto_tune_cli_prints_summary(monkeypatch: pytest.MonkeyPatch, capsys: p
 
     captured = capsys.readouterr()
     assert "Auto-tune summary" in captured.out
-    assert "Applied parameters" in captured.out
+    assert "Applied parameters (resolved)" in captured.out
     assert "Optimized metrics" in captured.out
 
     for key, value in sorted(result.best_params.items()):
@@ -187,7 +187,7 @@ def test_auto_tune_cli_accepts_z_datetime(monkeypatch: pytest.MonkeyPatch, capsy
 
     captured = capsys.readouterr()
     assert "Auto-tune summary" in captured.out
-    assert "Applied parameters" in captured.out
+    assert "Applied parameters (resolved)" in captured.out
     assert "Optimized metrics" in captured.out
 
 
@@ -326,6 +326,10 @@ def test_tune_intraday_settings_records_resolved_selector_params(
         value = objective(trial)
         metrics = {"value": value}
         metrics.update(trial.user_attrs)
+        assert trial.user_attrs["resolved_selector_window"] == recorded_window
+        assert trial.user_attrs["resolved_selector_threshold"] == pytest.approx(
+            recorded_threshold
+        )
         resolved = trial.user_attrs["resolved_params"]
         return CandidateResult(params=resolved, metrics=metrics, is_promoted=True)
 
