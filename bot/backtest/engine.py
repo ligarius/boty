@@ -28,6 +28,9 @@ class BacktestMetrics:
     win_rate: float
     training_accuracy: float | None = None
     training_f1: float | None = None
+    training_precision: float | None = None
+    training_recall: float | None = None
+    selector_threshold: float | None = None
 
     def to_dict(self) -> Dict[str, float]:
         """Serialize metrics as a plain dictionary."""
@@ -191,7 +194,9 @@ class BacktestEngine:
             )
             reports.append(report)
             window_probas = selector.predict_proba(sorted_features.loc[window_indices])
-            probabilities.loc[window_indices] = window_probas
+            threshold = float(getattr(selector, "decision_threshold", 0.5))
+            adjusted = np.where(window_probas >= threshold, window_probas, 0.0)
+            probabilities.loc[window_indices] = adjusted
 
         probabilities = probabilities.fillna(1.0)
         return probabilities, reports
@@ -410,15 +415,25 @@ class BacktestEngine:
         else:
             proba_series = probabilities.reindex(probability_table.index)
             if proba_series.empty:
-                proba_series = pd.Series(np.ones(len(probability_table)), index=probability_table.index, dtype=float)
+                proba_series = pd.Series(
+                    np.ones(len(probability_table)), index=probability_table.index, dtype=float
+                )
             probability_table["probability"] = proba_series.fillna(1.0).clip(0.0, 1.0)
-            probability_table["weighted_score"] = probability_table["score"] * probability_table["probability"]
+            probability_table["weighted_score"] = (
+                probability_table["score"] * probability_table["probability"]
+            )
             weighted_scores = (
-                probability_table.groupby("timestamp")["weighted_score"].sum().reindex(data.index, fill_value=0.0)
+                probability_table.groupby("timestamp")["weighted_score"].sum().reindex(
+                    data.index, fill_value=0.0
+                )
             )
 
         self.last_signal_probabilities = probability_table
         raw_weighted_scores = weighted_scores.astype(float)
+        threshold = float(resolved_selector_threshold)
+        if threshold > 0:
+            clip_limit = float(np.nextafter(threshold, 0.0))
+            raw_weighted_scores = raw_weighted_scores.clip(-clip_limit, clip_limit)
         rescaled_reference = raw_weighted_scores.copy()
         abs_max = raw_weighted_scores.abs().max()
         if abs_max and abs_max > 0:
@@ -426,7 +441,6 @@ class BacktestEngine:
         else:
             normalized_weighted_scores = raw_weighted_scores.copy()
 
-        threshold = float(resolved_selector_threshold)
         final_signal = pd.Series(0, index=data.index, dtype=int)
         final_signal.loc[normalized_weighted_scores > threshold] = 1
         final_signal.loc[normalized_weighted_scores < -threshold] = -1
@@ -453,6 +467,11 @@ class BacktestEngine:
 
         training_accuracy = report.accuracy if report else None
         training_f1 = report.f1 if report else None
+        training_precision = report.precision if report else None
+        training_recall = report.recall if report else None
+        calibrated_threshold = (
+            float(report.threshold) if report else float(resolved_selector_threshold)
+        )
 
         if vbt is not None:
             pf = vbt.Portfolio.from_signals(
@@ -474,6 +493,9 @@ class BacktestEngine:
                 win_rate=self._sanitize(float(stats.loc["Win Rate [%]"]) / 100),
                 training_accuracy=training_accuracy,
                 training_f1=training_f1,
+                training_precision=training_precision,
+                training_recall=training_recall,
+                selector_threshold=calibrated_threshold,
             )
 
         # numpy fallback when vectorbt is unavailable
@@ -510,6 +532,9 @@ class BacktestEngine:
             win_rate=self._sanitize(win_rate),
             training_accuracy=training_accuracy,
             training_f1=training_f1,
+            training_precision=training_precision,
+            training_recall=training_recall,
+            selector_threshold=calibrated_threshold,
         )
 
     def meets_go_live(self, metrics: BacktestMetrics) -> bool:
